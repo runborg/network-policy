@@ -1,0 +1,112 @@
+#!/usr/bin/env python3
+"""
+network-policy-init - Initialization service
+
+Applies complete network policy configuration including:
+- System settings (hostname, timezone, users)
+- NetworkManager profiles
+- Policy routing
+- Firewall rules
+- DNS configuration
+"""
+
+import sys
+import argparse
+from pathlib import Path
+
+# Add library to path
+sys.path.insert(0, '/usr/local/lib/network-policy')
+
+from logger import setup_logging, get_logger
+from config import load_config, ValidationError
+from system import apply_system_config
+from nm_profiles import apply_nm_profiles
+from routing import apply_routing_config
+from firewall import apply_firewall_config
+from dns import apply_dns_config
+
+DEFAULT_CONFIG = "/data/network-policy.toml"
+
+
+def main():
+    """Main initialization function."""
+    parser = argparse.ArgumentParser(
+        description="Network Policy Initialization Service"
+    )
+    parser.add_argument(
+        "-c", "--config",
+        default=DEFAULT_CONFIG,
+        help=f"Configuration file path (default: {DEFAULT_CONFIG})"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging"
+    )
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    log_level = "DEBUG" if args.verbose else "INFO"
+    setup_logging(log_path="/var/log/network-policy.log", log_level=log_level)
+    logger = get_logger(__name__)
+    
+    try:
+        logger.info("=" * 60)
+        logger.info("Network Policy Initialization Starting")
+        logger.info("=" * 60)
+        
+        # Load and validate configuration
+        logger.info(f"Loading configuration from {args.config}")
+        config = load_config(args.config)
+        logger.info("Configuration validated successfully")
+        
+        # Apply system settings
+        logger.info("Applying system settings...")
+        apply_system_config(config)
+        logger.info("System settings applied")
+        
+        # Apply NetworkManager profiles
+        logger.info("Applying NetworkManager profiles...")
+        apply_nm_profiles(config)
+        logger.info("NetworkManager profiles applied")
+        
+        # Wait a moment for interfaces to come up
+        import time
+        logger.info("Waiting for interfaces to initialize...")
+        time.sleep(5)
+        
+        # Apply policy routing
+        logger.info("Applying policy routing...")
+        apply_routing_config(config)
+        logger.info("Policy routing applied")
+        
+        # Apply firewall rules
+        logger.info("Applying firewall rules...")
+        apply_firewall_config(config)
+        logger.info("Firewall rules applied")
+        
+        # Apply DNS configuration
+        logger.info("Applying DNS configuration...")
+        apply_dns_config(config)
+        logger.info("DNS configuration applied")
+        
+        logger.info("=" * 60)
+        logger.info("Network Policy Initialization Completed Successfully")
+        logger.info("=" * 60)
+        
+        return 0
+        
+    except ValidationError as e:
+        logger.error(f"Configuration validation error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        logger.error(f"Configuration file not found: {e}")
+        return 1
+    except Exception as e:
+        logger.error(f"Initialization failed: {e}", exc_info=True)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

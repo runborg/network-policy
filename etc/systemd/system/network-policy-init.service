@@ -1,0 +1,16 @@
+[Unit]
+Description=Network Policy Initialization
+Documentation=man:network-policy(8)
+After=network-pre.target
+Before=network.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/network-policy-init -c /data/network-policy.toml
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
