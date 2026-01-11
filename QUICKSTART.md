@@ -120,6 +120,31 @@ sudo journalctl -u network-policy-init.service -f
 sudo journalctl -u network-policy-healthcheck.service -f
 ```
 
+## Configuration Workflow
+
+**Important:** The `cfg set` and `cfg del` commands save changes to the configuration file but do NOT automatically apply them. This allows you to:
+
+1. Make multiple related changes safely (e.g., changing interface method from DHCP to static requires setting address, gateway, etc.)
+2. Verify configuration is valid before applying
+3. Avoid partial configurations that could break networking
+
+**Workflow:**
+```bash
+# 1. Make your changes
+cfg set ethernet.eth0.method=static
+cfg set ethernet.eth0.address="192.168.1.100/24"
+cfg set ethernet.eth0.gateway="192.168.1.1"
+
+# 2. Validate configuration
+network-policy-validate /data/network-policy.toml
+
+# 3. Apply changes
+cfg reload
+
+# OR: Set and apply immediately (use with caution)
+cfg set ethernet.eth0.enabled=true --apply
+```
+
 ## Common Tasks
 
 ### Add a WiFi Interface
@@ -132,6 +157,9 @@ cfg set wifi.wlan0.priority=20
 cfg set wifi.wlan0.ssid="MyNetwork"
 cfg set wifi.wlan0.psk="MyPassword123"
 cfg set wifi.wlan0.method=dhcp
+
+# Apply the changes
+cfg reload
 ```
 
 Or edit `/data/network-policy.toml`:
@@ -145,7 +173,7 @@ psk = "MyPassword123"
 method = "dhcp"
 ```
 
-The cfg command automatically reloads after changes. Or reload manually:
+After making changes, apply them:
 ```bash
 cfg reload
 ```
@@ -202,6 +230,9 @@ cfg set healthcheck.timeout_sec=5
 cfg set healthcheck.probe_targets='["8.8.8.8", "1.1.1.1"]'
 cfg set healthcheck.failures_before_down=3
 cfg set healthcheck.successes_before_up=2
+
+# Apply all changes
+cfg reload
 ```
 
 Or edit `/data/network-policy.toml`:

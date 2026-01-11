@@ -365,8 +365,8 @@ def cmd_set(args):
         print(f"✓ Set {path_str} = {json.dumps(value)}")
         print(f"✓ Configuration saved to {config_path}")
         
-        if not args.no_reload:
-            print("\nReloading services...")
+        if args.apply:
+            print("\nApplying configuration changes...")
             # Trigger reload
             result = subprocess.run(
                 ["network-policy-cfg", "reload", "-c", str(config_path)],
@@ -377,7 +377,11 @@ def cmd_set(args):
             debug.log_result(result.returncode, result.stdout, result.stderr)
             
             if result.returncode != 0:
-                print(f"⚠ Reload failed: {result.stderr}")
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
         
         return 0
     except ValidationError as e:
@@ -423,8 +427,8 @@ def cmd_del(args):
         print(f"✓ Deleted {args.path}")
         print(f"✓ Configuration saved to {config_path}")
         
-        if not args.no_reload:
-            print("\nReloading services...")
+        if args.apply:
+            print("\nApplying configuration changes...")
             result = subprocess.run(
                 ["network-policy-cfg", "reload", "-c", str(config_path)],
                 capture_output=True,
@@ -434,7 +438,11 @@ def cmd_del(args):
             debug.log_result(result.returncode, result.stdout, result.stderr)
             
             if result.returncode != 0:
-                print(f"⚠ Reload failed: {result.stderr}")
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
         
         return 0
     except ValidationError as e:
@@ -577,7 +585,7 @@ Examples:
   # View configuration value
   cfg get ethernet.eth0.method
   
-  # Set simple value
+  # Set simple value (does not auto-apply)
   cfg set ethernet.eth0.method=dhcp
   
   # Set with quotes for strings
@@ -589,14 +597,20 @@ Examples:
   # Delete configuration
   cfg del ethernet.eth1
   
+  # Delete specific list item by index
+  cfg del system.ntp_servers.[0]
+  
+  # Set and immediately apply
+  cfg set ethernet.eth0.enabled=true --apply
+  
+  # After making changes, validate and apply
+  cfg reload
+  
   # Export config as commands
   cfg export > config-backup.sh
   
   # Show status
   cfg status
-  
-  # Reload after manual edit
-  cfg reload
 """
     )
     
@@ -618,14 +632,14 @@ Examples:
     set_parser = subparsers.add_parser('set', help='Set configuration value')
     set_parser.add_argument('assignment', help='Assignment in format path=value')
     set_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
-    set_parser.add_argument('--no-reload', action='store_true', help='Do not reload after set')
+    set_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     set_parser.set_defaults(func=cmd_set)
     
     # Delete command
     del_parser = subparsers.add_parser('del', help='Delete configuration value')
-    del_parser.add_argument('path', help='Configuration path to delete')
+    del_parser.add_argument('path', help='Configuration path to delete (supports list indices like ntp_servers.[1])')
     del_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
-    del_parser.add_argument('--no-reload', action='store_true', help='Do not reload after delete')
+    del_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     del_parser.set_defaults(func=cmd_del)
     
     # Export command

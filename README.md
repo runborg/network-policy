@@ -209,7 +209,7 @@ The `cfg` command (alias for `network-policy-cfg`) provides easy configuration m
 cfg get ethernet.eth0.method
 cfg get firewall.enabled
 
-# Set configuration values
+# Set configuration values (changes saved but not applied)
 cfg set ethernet.eth0.method=dhcp
 cfg set system.hostname="my-gateway"
 cfg set firewall.enabled=true
@@ -222,6 +222,15 @@ cfg set system.ntp_servers.[]="5.6.7.8"
 cfg del ethernet.eth1
 cfg del wifi.wlan0
 
+# Delete specific list item by index
+cfg del system.ntp_servers.[0]
+
+# Set and immediately apply changes
+cfg set ethernet.eth0.enabled=true --apply
+
+# After making multiple changes, validate and apply
+cfg reload
+
 # Export config as commands
 cfg export > config-backup.sh
 
@@ -229,6 +238,8 @@ cfg export > config-backup.sh
 cfg --debug set ethernet.eth0.method=static
 cfg --debug reload
 ```
+
+**Note:** By default, `cfg set` and `cfg del` save changes to the configuration file but do NOT automatically apply them. This allows you to make multiple related changes (e.g., changing method and address together) before applying. Use `cfg reload` to validate and apply changes, or use the `--apply` flag to apply immediately.
 
 ### Control Commands
 
