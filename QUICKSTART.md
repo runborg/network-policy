@@ -106,10 +106,14 @@ sudo systemctl status network-policy-healthcheck.service
 
 ```bash
 # Check system status
-network-policy-ctl status
+cfg status
 
 # View firewall rules
-network-policy-ctl firewall
+cfg firewall
+
+# View configuration
+cfg get system.hostname
+cfg get ethernet.eth0.method
 
 # View logs
 sudo journalctl -u network-policy-init.service -f
@@ -120,7 +124,17 @@ sudo journalctl -u network-policy-healthcheck.service -f
 
 ### Add a WiFi Interface
 
-Edit `/data/network-policy.toml`:
+Using the cfg command:
+
+```bash
+cfg set wifi.wlan0.enabled=true
+cfg set wifi.wlan0.priority=20
+cfg set wifi.wlan0.ssid="MyNetwork"
+cfg set wifi.wlan0.psk="MyPassword123"
+cfg set wifi.wlan0.method=dhcp
+```
+
+Or edit `/data/network-policy.toml`:
 
 ```toml
 [wifi.wlan0]
@@ -131,14 +145,26 @@ psk = "MyPassword123"
 method = "dhcp"
 ```
 
-Reload:
+The cfg command automatically reloads after changes. Or reload manually:
 ```bash
-network-policy-ctl reload
+cfg reload
 ```
 
 ### Configure Firewall Rules
 
-Edit `/data/network-policy.toml`:
+Using cfg command:
+```bash
+# Create address group
+cfg set firewall.address_groups.trusted.addresses='["192.168.1.0/24", "10.0.0.0/8"]'
+
+# Create service
+cfg set firewall.services.web.protocol=tcp
+cfg set firewall.services.web.ports='[80, 443]'
+
+# Add firewall rule (note: array syntax for rules is complex, edit file directly)
+```
+
+Or edit `/data/network-policy.toml`:
 
 ```toml
 [firewall.address_groups.trusted]
@@ -155,14 +181,30 @@ service = "web"
 action = "accept"
 ```
 
-Reload:
-```bash
-network-policy-ctl reload
-```
-
 ### Set Up LTE Failover
 
-Edit `/data/network-policy.toml`:
+Using cfg command:
+```bash
+# Configure Ethernet as primary
+cfg set ethernet.eth0.enabled=true
+cfg set ethernet.eth0.priority=10
+cfg set ethernet.eth0.method=dhcp
+
+# Configure LTE as backup
+cfg set lte.wwan0.enabled=true
+cfg set lte.wwan0.priority=30
+cfg set lte.wwan0.device="eg25-g"
+cfg set lte.wwan0.apn="internet"
+
+# Configure health monitoring
+cfg set healthcheck.interval_sec=30
+cfg set healthcheck.timeout_sec=5
+cfg set healthcheck.probe_targets='["8.8.8.8", "1.1.1.1"]'
+cfg set healthcheck.failures_before_down=3
+cfg set healthcheck.successes_before_up=2
+```
+
+Or edit `/data/network-policy.toml`:
 
 ```toml
 [ethernet.eth0]
@@ -184,10 +226,9 @@ failures_before_down = 3
 successes_before_up = 2
 ```
 
-Reload and check:
+Check status:
 ```bash
-network-policy-ctl reload
-network-policy-ctl status
+cfg status
 ```
 
 The health monitor will automatically switch to LTE when Ethernet fails!
@@ -245,6 +286,31 @@ ps aux | grep network-policy-healthcheck
 ls -la /run/network-policy.sock
 
 # Manual status check
+cfg status
+
+# Check logs
+sudo journalctl -u network-policy-healthcheck.service -f
+```
+
+### Debug Mode
+
+Enable comprehensive debug logging for troubleshooting:
+
+```bash
+# Enable debug logging for any command
+cfg --debug set ethernet.eth0.method=dhcp
+cfg --debug reload
+cfg --debug status
+
+# View debug log
+sudo tail -f /var/log/network-policy-cfg-debug.log
+```
+
+The debug log captures:
+- All commands executed with full output
+- File operations (read/write)
+- Socket communications
+- Error codes and stack traces
 network-policy-ctl status
 
 # Check logs

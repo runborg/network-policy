@@ -24,12 +24,25 @@ case "$1" in
             systemctl daemon-reload >/dev/null 2>&1 || true
         fi
         
+        # Create cfg symlink for convenience
+        if [ ! -e /usr/local/bin/cfg ]; then
+            ln -s /usr/local/bin/network-policy-cfg /usr/local/bin/cfg
+        fi
+        
         # Enable but don't start services (user must configure first)
         if [ -d /run/systemd/system ]; then
             systemctl enable network-policy-init.service >/dev/null 2>&1 || true
             systemctl enable network-policy-healthcheck.service >/dev/null 2>&1 || true
             echo ""
             echo "Network Policy installed successfully!"
+            echo ""
+            echo "Quick command reference:"
+            echo "  cfg status              - Show system status"
+            echo "  cfg get PATH            - Get config value"
+            echo "  cfg set PATH=VALUE      - Set config value"
+            echo "  cfg del PATH            - Delete config value"
+            echo "  cfg reload              - Reload configuration"
+            echo "  cfg --debug COMMAND     - Enable debug logging"
             echo ""
             echo "Next steps:"
             echo "1. Edit /data/network-policy.toml for your system"

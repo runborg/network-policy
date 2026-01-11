@@ -200,17 +200,47 @@ successes_before_up = 2
 
 ## Usage
 
+### Configuration Management
+
+The `cfg` command (alias for `network-policy-cfg`) provides easy configuration management:
+
+```bash
+# View configuration values
+cfg get ethernet.eth0.method
+cfg get firewall.enabled
+
+# Set configuration values
+cfg set ethernet.eth0.method=dhcp
+cfg set system.hostname="my-gateway"
+cfg set firewall.enabled=true
+
+# Add to lists
+cfg set system.ntp_servers.[]="1.2.3.4"
+cfg set system.ntp_servers.[]="5.6.7.8"
+
+# Delete configuration
+cfg del ethernet.eth1
+cfg del wifi.wlan0
+
+# Export config as commands
+cfg export > config-backup.sh
+
+# Enable debug logging (logs to /var/log/network-policy-cfg-debug.log)
+cfg --debug set ethernet.eth0.method=static
+cfg --debug reload
+```
+
 ### Control Commands
 
 ```bash
 # Reload configuration
-network-policy-ctl reload
+cfg reload
 
 # Check system status
-network-policy-ctl status
+cfg status
 
 # View firewall rules
-network-policy-ctl firewall
+cfg firewall
 
 # Validate configuration
 network-policy-validate /data/network-policy.toml
