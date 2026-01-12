@@ -124,20 +124,41 @@ ssh_keys = ["ssh-ed25519 AAAAC3..."]
 ### Network Interfaces
 
 ```toml
-# Ethernet (DHCP)
+# Ethernet (DHCP with IPv4 and IPv6)
 [ethernet.eth0]
 enabled = true
 priority = 10
-method = "dhcp"
+method = "dhcp"  # IPv4 DHCP
+ipv6_method = "auto"  # IPv6 SLAAC/ND
 
-# Ethernet (Static)
+# Ethernet (Static IPv4 with multiple addresses)
 [ethernet.eth1]
 enabled = true
 priority = 15
 method = "static"
-address = "10.0.1.100/24"
+addresses = ["10.0.1.100/24", "10.0.1.101/24"]  # Multiple IPv4 addresses
 gateway = "10.0.1.1"
-dns = ["10.0.1.1"]
+dns = ["10.0.1.1", "8.8.8.8"]
+
+# Ethernet (Dual-stack: Static IPv4 and IPv6)
+[ethernet.eth2]
+enabled = true
+priority = 12
+method = "static"
+addresses = ["192.168.1.100/24"]
+gateway = "192.168.1.1"
+dns = ["192.168.1.1"]
+ipv6_method = "static"
+ipv6_addresses = ["2001:db8::100/64", "2001:db8::101/64"]  # Multiple IPv6 addresses
+ipv6_gateway = "2001:db8::1"
+ipv6_dns = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+
+# Ethernet (DHCPv6)
+[ethernet.eth3]
+enabled = true
+priority = 14
+method = "dhcp"
+ipv6_method = "dhcp"  # DHCPv6 for IPv6
 
 # WiFi
 [wifi.wlan0]
@@ -146,6 +167,7 @@ priority = 20
 ssid = "MyNetwork"
 psk = "password123"
 method = "dhcp"
+ipv6_method = "auto"  # IPv6 SLAAC
 
 # LTE/Cellular
 [lte.wwan0]
@@ -163,6 +185,17 @@ peer_public_key = "PEER_PUBLIC_KEY="
 peer_endpoint = "vpn.example.com:51820"
 peer_allowed_ips = ["0.0.0.0/0"]
 ```
+
+**IPv6 Methods:**
+- `auto` - Automatic IPv6 configuration via SLAAC (Stateless Address Autoconfiguration) and ND (Neighbor Discovery)
+- `dhcp` - DHCPv6 (Stateful address configuration)
+- `static` - Static IPv6 address configuration
+- `disabled` - Disable IPv6 on the interface
+
+**Multiple IP Addresses:**
+- Use `address` for a single IP address (legacy, backward compatible)
+- Use `addresses` for multiple IP addresses on the same interface
+- Same applies for IPv6: `ipv6_address` (single) or `ipv6_addresses` (multiple)
 
 ### Firewall
 
@@ -213,12 +246,14 @@ cfg get firewall.enabled
 cfg set ethernet.eth0.method=dhcp
 cfg set system.hostname="my-gateway"
 
-# Set multiple values in one command
-cfg set ethernet.eth0.method=static ethernet.eth0.address="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
+# Set multiple values in one command (including IPv6)
+cfg set ethernet.eth0.method=static ethernet.eth0.addresses.[]="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
+cfg set ethernet.eth0.ipv6_method=static ethernet.eth0.ipv6_addresses.[]="2001:db8::100/64" ethernet.eth0.ipv6_gateway="2001:db8::1"
 
 # Add to lists
 cfg set system.ntp_servers.[]="1.2.3.4"
-cfg set system.ntp_servers.[]="5.6.7.8"
+cfg set ethernet.eth0.addresses.[]="192.168.1.101/24"
+cfg set ethernet.eth0.ipv6_addresses.[]="2001:db8::101/64"
 
 # Delete single configuration
 cfg del ethernet.eth1
@@ -228,9 +263,11 @@ cfg del ethernet.eth1 wifi.wlan0
 
 # Delete specific list item by index
 cfg del system.ntp_servers.[0]
+cfg del ethernet.eth0.addresses.[1]
 
 # Delete list item by value
 cfg del system.ntp_servers.[]="1.2.3.4"
+cfg del ethernet.eth0.ipv6_addresses.[]="2001:db8::101/64"
 
 # Set and immediately apply changes
 cfg set ethernet.eth0.enabled=true --apply

@@ -36,6 +36,9 @@ VALID_PROTOCOLS = ["tcp", "udp", "icmp"]
 # Valid network methods
 VALID_NETWORK_METHODS = ["dhcp", "static", "auto"]
 
+# Valid IPv6 methods
+VALID_IPV6_METHODS = ["auto", "dhcp", "static", "disabled"]
+
 # Valid shells
 VALID_SHELLS = ["/bin/bash", "/bin/sh", "/bin/zsh", "/usr/bin/fish"]
 
@@ -237,7 +240,8 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
         raise ValidationError(f"ethernet.{iface_name} must be a dictionary")
     
     # Check for unknown fields
-    valid_fields = ["enabled", "priority", "method", "address", "gateway", "dns", "mtu"]
+    valid_fields = ["enabled", "priority", "method", "address", "addresses", "gateway", "dns", "mtu",
+                    "ipv6_method", "ipv6_address", "ipv6_addresses", "ipv6_gateway", "ipv6_dns"]
     for key in config.keys():
         if key not in valid_fields:
             raise ValidationError(f"Unknown field in ethernet.{iface_name}: {key}")
@@ -254,7 +258,7 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
         if priority < 0 or priority > 1000:
             raise ValidationError(f"ethernet.{iface_name}.priority must be 0-1000")
     
-    # Validate method
+    # Validate method (IPv4)
     if "method" in config:
         method = config["method"]
         if not isinstance(method, str):
@@ -264,14 +268,24 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
                 f"ethernet.{iface_name}.method must be one of: {', '.join(VALID_NETWORK_METHODS)}"
             )
         
-        # If static, require address
+        # If static, require address or addresses
         if method == "static":
-            if "address" not in config:
-                raise ValidationError(f"ethernet.{iface_name}.address required when method=static")
+            if "address" not in config and "addresses" not in config:
+                raise ValidationError(f"ethernet.{iface_name}.address or addresses required when method=static")
     
-    # Validate address
+    # Validate single address (legacy, for backward compatibility)
     if "address" in config:
         _validate_ip_address(config["address"], f"ethernet.{iface_name}.address")
+    
+    # Validate multiple addresses (new format)
+    if "addresses" in config:
+        addresses = config["addresses"]
+        if not isinstance(addresses, list):
+            raise ValidationError(f"ethernet.{iface_name}.addresses must be a list")
+        if not addresses:
+            raise ValidationError(f"ethernet.{iface_name}.addresses cannot be empty")
+        for idx, addr in enumerate(addresses):
+            _validate_ip_address(addr, f"ethernet.{iface_name}.addresses[{idx}]")
     
     # Validate gateway
     if "gateway" in config:
@@ -284,6 +298,47 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
             raise ValidationError(f"ethernet.{iface_name}.dns must be a list")
         for idx, server in enumerate(dns):
             _validate_ip_address(server, f"ethernet.{iface_name}.dns[{idx}]", require_cidr=False)
+    
+    # Validate IPv6 method
+    if "ipv6_method" in config:
+        ipv6_method = config["ipv6_method"]
+        if not isinstance(ipv6_method, str):
+            raise ValidationError(f"ethernet.{iface_name}.ipv6_method must be a string")
+        if ipv6_method not in VALID_IPV6_METHODS:
+            raise ValidationError(
+                f"ethernet.{iface_name}.ipv6_method must be one of: {', '.join(VALID_IPV6_METHODS)}"
+            )
+        
+        # If static, require ipv6_address or ipv6_addresses
+        if ipv6_method == "static":
+            if "ipv6_address" not in config and "ipv6_addresses" not in config:
+                raise ValidationError(f"ethernet.{iface_name}.ipv6_address or ipv6_addresses required when ipv6_method=static")
+    
+    # Validate single IPv6 address (for backward compatibility)
+    if "ipv6_address" in config:
+        _validate_ip_address(config["ipv6_address"], f"ethernet.{iface_name}.ipv6_address")
+    
+    # Validate multiple IPv6 addresses (new format)
+    if "ipv6_addresses" in config:
+        ipv6_addresses = config["ipv6_addresses"]
+        if not isinstance(ipv6_addresses, list):
+            raise ValidationError(f"ethernet.{iface_name}.ipv6_addresses must be a list")
+        if not ipv6_addresses:
+            raise ValidationError(f"ethernet.{iface_name}.ipv6_addresses cannot be empty")
+        for idx, addr in enumerate(ipv6_addresses):
+            _validate_ip_address(addr, f"ethernet.{iface_name}.ipv6_addresses[{idx}]")
+    
+    # Validate IPv6 gateway
+    if "ipv6_gateway" in config:
+        _validate_ip_address(config["ipv6_gateway"], f"ethernet.{iface_name}.ipv6_gateway", require_cidr=False)
+    
+    # Validate IPv6 DNS
+    if "ipv6_dns" in config:
+        ipv6_dns = config["ipv6_dns"]
+        if not isinstance(ipv6_dns, list):
+            raise ValidationError(f"ethernet.{iface_name}.ipv6_dns must be a list")
+        for idx, server in enumerate(ipv6_dns):
+            _validate_ip_address(server, f"ethernet.{iface_name}.ipv6_dns[{idx}]", require_cidr=False)
     
     # Validate MTU
     if "mtu" in config:
@@ -300,7 +355,8 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
         raise ValidationError(f"wifi.{iface_name} must be a dictionary")
     
     # Check for unknown fields
-    valid_fields = ["enabled", "priority", "ssid", "psk", "method", "address", "gateway", "dns"]
+    valid_fields = ["enabled", "priority", "ssid", "psk", "method", "address", "addresses", "gateway", "dns",
+                    "ipv6_method", "ipv6_address", "ipv6_addresses", "ipv6_gateway", "ipv6_dns"]
     for key in config.keys():
         if key not in valid_fields:
             raise ValidationError(f"Unknown field in wifi.{iface_name}: {key}")
@@ -338,7 +394,7 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
         if len(psk) < 8 or len(psk) > 63:
             raise ValidationError(f"wifi.{iface_name}.psk must be 8-63 characters")
     
-    # Validate method
+    # Validate method (IPv4)
     if "method" in config:
         method = config["method"]
         if not isinstance(method, str):
@@ -348,14 +404,24 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
                 f"wifi.{iface_name}.method must be one of: {', '.join(VALID_NETWORK_METHODS)}"
             )
         
-        # If static, require address
+        # If static, require address or addresses
         if method == "static":
-            if "address" not in config:
-                raise ValidationError(f"wifi.{iface_name}.address required when method=static")
+            if "address" not in config and "addresses" not in config:
+                raise ValidationError(f"wifi.{iface_name}.address or addresses required when method=static")
     
-    # Validate address
+    # Validate single address (legacy)
     if "address" in config:
         _validate_ip_address(config["address"], f"wifi.{iface_name}.address")
+    
+    # Validate multiple addresses
+    if "addresses" in config:
+        addresses = config["addresses"]
+        if not isinstance(addresses, list):
+            raise ValidationError(f"wifi.{iface_name}.addresses must be a list")
+        if not addresses:
+            raise ValidationError(f"wifi.{iface_name}.addresses cannot be empty")
+        for idx, addr in enumerate(addresses):
+            _validate_ip_address(addr, f"wifi.{iface_name}.addresses[{idx}]")
     
     # Validate gateway
     if "gateway" in config:
@@ -368,6 +434,47 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
             raise ValidationError(f"wifi.{iface_name}.dns must be a list")
         for idx, server in enumerate(dns):
             _validate_ip_address(server, f"wifi.{iface_name}.dns[{idx}]", require_cidr=False)
+    
+    # Validate IPv6 method
+    if "ipv6_method" in config:
+        ipv6_method = config["ipv6_method"]
+        if not isinstance(ipv6_method, str):
+            raise ValidationError(f"wifi.{iface_name}.ipv6_method must be a string")
+        if ipv6_method not in VALID_IPV6_METHODS:
+            raise ValidationError(
+                f"wifi.{iface_name}.ipv6_method must be one of: {', '.join(VALID_IPV6_METHODS)}"
+            )
+        
+        # If static, require ipv6_address or ipv6_addresses
+        if ipv6_method == "static":
+            if "ipv6_address" not in config and "ipv6_addresses" not in config:
+                raise ValidationError(f"wifi.{iface_name}.ipv6_address or ipv6_addresses required when ipv6_method=static")
+    
+    # Validate single IPv6 address
+    if "ipv6_address" in config:
+        _validate_ip_address(config["ipv6_address"], f"wifi.{iface_name}.ipv6_address")
+    
+    # Validate multiple IPv6 addresses
+    if "ipv6_addresses" in config:
+        ipv6_addresses = config["ipv6_addresses"]
+        if not isinstance(ipv6_addresses, list):
+            raise ValidationError(f"wifi.{iface_name}.ipv6_addresses must be a list")
+        if not ipv6_addresses:
+            raise ValidationError(f"wifi.{iface_name}.ipv6_addresses cannot be empty")
+        for idx, addr in enumerate(ipv6_addresses):
+            _validate_ip_address(addr, f"wifi.{iface_name}.ipv6_addresses[{idx}]")
+    
+    # Validate IPv6 gateway
+    if "ipv6_gateway" in config:
+        _validate_ip_address(config["ipv6_gateway"], f"wifi.{iface_name}.ipv6_gateway", require_cidr=False)
+    
+    # Validate IPv6 DNS
+    if "ipv6_dns" in config:
+        ipv6_dns = config["ipv6_dns"]
+        if not isinstance(ipv6_dns, list):
+            raise ValidationError(f"wifi.{iface_name}.ipv6_dns must be a list")
+        for idx, server in enumerate(ipv6_dns):
+            _validate_ip_address(server, f"wifi.{iface_name}.ipv6_dns[{idx}]", require_cidr=False)
 
 
 def _validate_lte(iface_name: str, config: Any) -> None:

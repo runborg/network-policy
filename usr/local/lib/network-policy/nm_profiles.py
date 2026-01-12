@@ -106,12 +106,17 @@ def create_ethernet_profile(iface_name: str, config: Dict[str, Any]) -> None:
             "autoconnect", "yes"
         ]
         
-        # Set IP method
+        # Set IPv4 method
         if method == "dhcp":
             cmd.extend(["ipv4.method", "auto"])
         elif method == "static":
             cmd.extend(["ipv4.method", "manual"])
-            cmd.extend(["ipv4.addresses", config["address"]])
+            
+            # Handle multiple addresses or single address
+            if "addresses" in config:
+                cmd.extend(["ipv4.addresses", " ".join(config["addresses"])])
+            elif "address" in config:
+                cmd.extend(["ipv4.addresses", config["address"]])
             
             if "gateway" in config:
                 cmd.extend(["ipv4.gateway", config["gateway"]])
@@ -120,6 +125,29 @@ def create_ethernet_profile(iface_name: str, config: Dict[str, Any]) -> None:
                 cmd.extend(["ipv4.dns", ",".join(config["dns"])])
         else:  # auto
             cmd.extend(["ipv4.method", "auto"])
+        
+        # Set IPv6 method
+        ipv6_method = config.get("ipv6_method", "auto")
+        if ipv6_method == "disabled":
+            cmd.extend(["ipv6.method", "disabled"])
+        elif ipv6_method == "dhcp":
+            cmd.extend(["ipv6.method", "dhcp"])
+        elif ipv6_method == "static":
+            cmd.extend(["ipv6.method", "manual"])
+            
+            # Handle multiple IPv6 addresses or single address
+            if "ipv6_addresses" in config:
+                cmd.extend(["ipv6.addresses", " ".join(config["ipv6_addresses"])])
+            elif "ipv6_address" in config:
+                cmd.extend(["ipv6.addresses", config["ipv6_address"]])
+            
+            if "ipv6_gateway" in config:
+                cmd.extend(["ipv6.gateway", config["ipv6_gateway"]])
+            
+            if "ipv6_dns" in config:
+                cmd.extend(["ipv6.dns", ",".join(config["ipv6_dns"])])
+        else:  # auto (SLAAC/ND)
+            cmd.extend(["ipv6.method", "auto"])
         
         # Set MTU if specified
         if "mtu" in config:
@@ -177,12 +205,17 @@ def create_wifi_profile(iface_name: str, config: Dict[str, Any]) -> None:
                 "wifi-sec.psk", config["psk"]
             ])
         
-        # Set IP method
+        # Set IPv4 method
         if method == "dhcp":
             cmd.extend(["ipv4.method", "auto"])
         elif method == "static":
             cmd.extend(["ipv4.method", "manual"])
-            cmd.extend(["ipv4.addresses", config["address"]])
+            
+            # Handle multiple addresses or single address
+            if "addresses" in config:
+                cmd.extend(["ipv4.addresses", " ".join(config["addresses"])])
+            elif "address" in config:
+                cmd.extend(["ipv4.addresses", config["address"]])
             
             if "gateway" in config:
                 cmd.extend(["ipv4.gateway", config["gateway"]])
@@ -191,6 +224,29 @@ def create_wifi_profile(iface_name: str, config: Dict[str, Any]) -> None:
                 cmd.extend(["ipv4.dns", ",".join(config["dns"])])
         else:  # auto
             cmd.extend(["ipv4.method", "auto"])
+        
+        # Set IPv6 method
+        ipv6_method = config.get("ipv6_method", "auto")
+        if ipv6_method == "disabled":
+            cmd.extend(["ipv6.method", "disabled"])
+        elif ipv6_method == "dhcp":
+            cmd.extend(["ipv6.method", "dhcp"])
+        elif ipv6_method == "static":
+            cmd.extend(["ipv6.method", "manual"])
+            
+            # Handle multiple IPv6 addresses or single address
+            if "ipv6_addresses" in config:
+                cmd.extend(["ipv6.addresses", " ".join(config["ipv6_addresses"])])
+            elif "ipv6_address" in config:
+                cmd.extend(["ipv6.addresses", config["ipv6_address"]])
+            
+            if "ipv6_gateway" in config:
+                cmd.extend(["ipv6.gateway", config["ipv6_gateway"]])
+            
+            if "ipv6_dns" in config:
+                cmd.extend(["ipv6.dns", ",".join(config["ipv6_dns"])])
+        else:  # auto (SLAAC/ND)
+            cmd.extend(["ipv6.method", "auto"])
         
         # Create connection
         subprocess.run(cmd, check=True, capture_output=True, text=True)

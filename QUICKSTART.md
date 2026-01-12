@@ -195,6 +195,68 @@ After making changes, apply them:
 cfg reload
 ```
 
+### Configure IPv6 on Interfaces
+
+Using the cfg command for dual-stack configuration (IPv4 + IPv6):
+
+```bash
+# Dual-stack with DHCP for both IPv4 and IPv6
+cfg set ethernet.eth0.enabled=true ethernet.eth0.priority=10 ethernet.eth0.method=dhcp ethernet.eth0.ipv6_method=auto
+
+# Static IPv4 and IPv6 (single addresses)
+cfg set ethernet.eth1.enabled=true ethernet.eth1.priority=15 \
+        ethernet.eth1.method=static ethernet.eth1.address="192.168.1.100/24" ethernet.eth1.gateway="192.168.1.1" \
+        ethernet.eth1.ipv6_method=static ethernet.eth1.ipv6_address="2001:db8::100/64" ethernet.eth1.ipv6_gateway="2001:db8::1"
+
+# Static with multiple IP addresses (both IPv4 and IPv6)
+cfg set ethernet.eth2.method=static \
+        ethernet.eth2.addresses.[]="10.0.1.100/24" ethernet.eth2.addresses.[]="10.0.1.101/24" \
+        ethernet.eth2.gateway="10.0.1.1" \
+        ethernet.eth2.ipv6_method=static \
+        ethernet.eth2.ipv6_addresses.[]="fd00::100/64" ethernet.eth2.ipv6_addresses.[]="fd00::101/64" \
+        ethernet.eth2.ipv6_gateway="fd00::1"
+
+# Apply the changes
+cfg reload
+```
+
+Or edit `/data/network-policy.toml`:
+
+```toml
+# Dual-stack: DHCP for IPv4, SLAAC for IPv6
+[ethernet.eth0]
+enabled = true
+priority = 10
+method = "dhcp"
+ipv6_method = "auto"  # SLAAC/ND
+
+# Static IPv4 and IPv6 with multiple addresses
+[ethernet.eth1]
+enabled = true
+priority = 15
+method = "static"
+addresses = ["192.168.1.100/24", "192.168.1.101/24"]
+gateway = "192.168.1.1"
+dns = ["192.168.1.1"]
+ipv6_method = "static"
+ipv6_addresses = ["2001:db8::100/64", "2001:db8::101/64"]
+ipv6_gateway = "2001:db8::1"
+ipv6_dns = ["2001:4860:4860::8888"]
+
+# DHCPv6 for IPv6
+[ethernet.eth2]
+enabled = true
+priority = 12
+method = "dhcp"
+ipv6_method = "dhcp"  # DHCPv6
+```
+
+**IPv6 Method Options:**
+- `auto` - SLAAC (Stateless Address Autoconfiguration) with Neighbor Discovery
+- `dhcp` - DHCPv6 (Stateful configuration)
+- `static` - Static IPv6 addresses
+- `disabled` - Disable IPv6
+
 ### Configure Firewall Rules
 
 Using cfg command:
