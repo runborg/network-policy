@@ -60,15 +60,15 @@ method = "dhcp"  # "dhcp", "static", or "auto"
 
 # Uncomment for static IPv4 configuration (single address):
 # method = "static"
-# address = "192.168.1.100/24"
-# gateway = "192.168.1.1"
-# dns = ["8.8.8.8", "1.1.1.1"]
+# ipv4_address = "192.168.1.100/24"
+# ipv4_gateway = "192.168.1.1"
+# ipv4_dns = ["8.8.8.8", "1.1.1.1"]
 
 # Uncomment for static IPv4 with multiple addresses:
 # method = "static"
-# addresses = ["192.168.1.100/24", "192.168.1.101/24"]
-# gateway = "192.168.1.1"
-# dns = ["8.8.8.8", "1.1.1.1"]
+# ipv4_addresses = ["192.168.1.100/24", "192.168.1.101/24"]
+# ipv4_gateway = "192.168.1.1"
+# ipv4_dns = ["8.8.8.8", "1.1.1.1"]
 
 # IPv6 Configuration
 ipv6_method = "auto"  # "auto" (SLAAC/ND), "dhcp" (DHCPv6), "static", or "disabled"
@@ -94,7 +94,7 @@ priority = 15
 
 # Example: Static IPv4 and IPv6 (dual-stack)
 method = "static"
-addresses = ["10.0.1.100/24", "10.0.1.101/24"]
+ipv4_addresses = ["10.0.1.100/24", "10.0.1.101/24"]
 gateway = "10.0.1.1"
 dns = ["10.0.1.1"]
 
@@ -121,15 +121,15 @@ method = "dhcp"
 
 # Uncomment for static IPv4 configuration:
 # method = "static"
-# address = "192.168.2.100/24"
-# gateway = "192.168.2.1"
-# dns = ["192.168.2.1"]
+# ipv4_address = "192.168.2.100/24"
+# ipv4_gateway = "192.168.2.1"
+# ipv4_dns = ["192.168.2.1"]
 
 # Uncomment for multiple static IPv4 addresses:
 # method = "static"
-# addresses = ["192.168.2.100/24", "192.168.2.101/24"]
-# gateway = "192.168.2.1"
-# dns = ["192.168.2.1"]
+# ipv4_addresses = ["192.168.2.100/24", "192.168.2.101/24"]
+# ipv4_gateway = "192.168.2.1"
+# ipv4_dns = ["192.168.2.1"]
 
 # IPv6 Configuration
 ipv6_method = "auto"  # "auto" (SLAAC/ND), "dhcp" (DHCPv6), "static", or "disabled"
@@ -173,13 +173,13 @@ enabled = true
 private_key = "YourPrivateKeyHere="
 
 # VPN IP address with CIDR
-address = "10.200.100.2/24"
+ipv4_address = "10.200.100.2/24"
 
 # Optional: Listen port for incoming connections
 # listen_port = 51820
 
 # Optional: DNS servers to use when VPN is active
-# dns = ["10.200.100.1"]
+# ipv4_dns = ["10.200.100.1"]
 
 # Peer configuration
 peer_public_key = "PeerPublicKeyHere="

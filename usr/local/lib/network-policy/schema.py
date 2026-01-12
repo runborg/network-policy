@@ -240,7 +240,7 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
         raise ValidationError(f"ethernet.{iface_name} must be a dictionary")
     
     # Check for unknown fields
-    valid_fields = ["enabled", "priority", "method", "address", "addresses", "gateway", "dns", "mtu",
+    valid_fields = ["enabled", "priority", "method", "ipv4_address", "ipv4_addresses", "ipv4_gateway", "ipv4_dns", "mtu",
                     "ipv6_method", "ipv6_address", "ipv6_addresses", "ipv6_gateway", "ipv6_dns"]
     for key in config.keys():
         if key not in valid_fields:
@@ -268,36 +268,36 @@ def _validate_ethernet(iface_name: str, config: Any) -> None:
                 f"ethernet.{iface_name}.method must be one of: {', '.join(VALID_NETWORK_METHODS)}"
             )
         
-        # If static, require address or addresses
+        # If static, require ipv4_address or ipv4_addresses
         if method == "static":
-            if "address" not in config and "addresses" not in config:
-                raise ValidationError(f"ethernet.{iface_name}.address or addresses required when method=static")
+            if "ipv4_address" not in config and "ipv4_addresses" not in config:
+                raise ValidationError(f"ethernet.{iface_name}.ipv4_address or ipv4_addresses required when method=static")
     
-    # Validate single address (legacy, for backward compatibility)
-    if "address" in config:
-        _validate_ip_address(config["address"], f"ethernet.{iface_name}.address")
+    # Validate single IPv4 address
+    if "ipv4_address" in config:
+        _validate_ip_address(config["ipv4_address"], f"ethernet.{iface_name}.ipv4_address")
     
-    # Validate multiple addresses (new format)
-    if "addresses" in config:
-        addresses = config["addresses"]
-        if not isinstance(addresses, list):
-            raise ValidationError(f"ethernet.{iface_name}.addresses must be a list")
-        if not addresses:
-            raise ValidationError(f"ethernet.{iface_name}.addresses cannot be empty")
-        for idx, addr in enumerate(addresses):
-            _validate_ip_address(addr, f"ethernet.{iface_name}.addresses[{idx}]")
+    # Validate multiple IPv4 addresses
+    if "ipv4_addresses" in config:
+        ipv4_addresses = config["ipv4_addresses"]
+        if not isinstance(ipv4_addresses, list):
+            raise ValidationError(f"ethernet.{iface_name}.ipv4_addresses must be a list")
+        if not ipv4_addresses:
+            raise ValidationError(f"ethernet.{iface_name}.ipv4_addresses cannot be empty")
+        for idx, addr in enumerate(ipv4_addresses):
+            _validate_ip_address(addr, f"ethernet.{iface_name}.ipv4_addresses[{idx}]")
     
-    # Validate gateway
-    if "gateway" in config:
-        _validate_ip_address(config["gateway"], f"ethernet.{iface_name}.gateway", require_cidr=False)
+    # Validate IPv4 gateway
+    if "ipv4_gateway" in config:
+        _validate_ip_address(config["ipv4_gateway"], f"ethernet.{iface_name}.ipv4_gateway", require_cidr=False)
     
-    # Validate DNS
-    if "dns" in config:
-        dns = config["dns"]
-        if not isinstance(dns, list):
-            raise ValidationError(f"ethernet.{iface_name}.dns must be a list")
-        for idx, server in enumerate(dns):
-            _validate_ip_address(server, f"ethernet.{iface_name}.dns[{idx}]", require_cidr=False)
+    # Validate IPv4 DNS
+    if "ipv4_dns" in config:
+        ipv4_dns = config["ipv4_dns"]
+        if not isinstance(ipv4_dns, list):
+            raise ValidationError(f"ethernet.{iface_name}.ipv4_dns must be a list")
+        for idx, server in enumerate(ipv4_dns):
+            _validate_ip_address(server, f"ethernet.{iface_name}.ipv4_dns[{idx}]", require_cidr=False)
     
     # Validate IPv6 method
     if "ipv6_method" in config:
@@ -355,7 +355,7 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
         raise ValidationError(f"wifi.{iface_name} must be a dictionary")
     
     # Check for unknown fields
-    valid_fields = ["enabled", "priority", "ssid", "psk", "method", "address", "addresses", "gateway", "dns",
+    valid_fields = ["enabled", "priority", "ssid", "psk", "method", "ipv4_address", "ipv4_addresses", "ipv4_gateway", "ipv4_dns",
                     "ipv6_method", "ipv6_address", "ipv6_addresses", "ipv6_gateway", "ipv6_dns"]
     for key in config.keys():
         if key not in valid_fields:
@@ -404,36 +404,36 @@ def _validate_wifi(iface_name: str, config: Any) -> None:
                 f"wifi.{iface_name}.method must be one of: {', '.join(VALID_NETWORK_METHODS)}"
             )
         
-        # If static, require address or addresses
+        # If static, require ipv4_address or ipv4_addresses
         if method == "static":
-            if "address" not in config and "addresses" not in config:
-                raise ValidationError(f"wifi.{iface_name}.address or addresses required when method=static")
+            if "ipv4_address" not in config and "ipv4_addresses" not in config:
+                raise ValidationError(f"wifi.{iface_name}.ipv4_address or ipv4_addresses required when method=static")
     
-    # Validate single address (legacy)
-    if "address" in config:
-        _validate_ip_address(config["address"], f"wifi.{iface_name}.address")
+    # Validate single IPv4 address
+    if "ipv4_address" in config:
+        _validate_ip_address(config["ipv4_address"], f"wifi.{iface_name}.ipv4_address")
     
-    # Validate multiple addresses
-    if "addresses" in config:
-        addresses = config["addresses"]
-        if not isinstance(addresses, list):
-            raise ValidationError(f"wifi.{iface_name}.addresses must be a list")
-        if not addresses:
-            raise ValidationError(f"wifi.{iface_name}.addresses cannot be empty")
-        for idx, addr in enumerate(addresses):
-            _validate_ip_address(addr, f"wifi.{iface_name}.addresses[{idx}]")
+    # Validate multiple IPv4 addresses
+    if "ipv4_addresses" in config:
+        ipv4_addresses = config["ipv4_addresses"]
+        if not isinstance(ipv4_addresses, list):
+            raise ValidationError(f"wifi.{iface_name}.ipv4_addresses must be a list")
+        if not ipv4_addresses:
+            raise ValidationError(f"wifi.{iface_name}.ipv4_addresses cannot be empty")
+        for idx, addr in enumerate(ipv4_addresses):
+            _validate_ip_address(addr, f"wifi.{iface_name}.ipv4_addresses[{idx}]")
     
-    # Validate gateway
-    if "gateway" in config:
-        _validate_ip_address(config["gateway"], f"wifi.{iface_name}.gateway", require_cidr=False)
+    # Validate IPv4 gateway
+    if "ipv4_gateway" in config:
+        _validate_ip_address(config["ipv4_gateway"], f"wifi.{iface_name}.ipv4_gateway", require_cidr=False)
     
-    # Validate DNS
-    if "dns" in config:
-        dns = config["dns"]
-        if not isinstance(dns, list):
-            raise ValidationError(f"wifi.{iface_name}.dns must be a list")
-        for idx, server in enumerate(dns):
-            _validate_ip_address(server, f"wifi.{iface_name}.dns[{idx}]", require_cidr=False)
+    # Validate IPv4 DNS
+    if "ipv4_dns" in config:
+        ipv4_dns = config["ipv4_dns"]
+        if not isinstance(ipv4_dns, list):
+            raise ValidationError(f"wifi.{iface_name}.ipv4_dns must be a list")
+        for idx, server in enumerate(ipv4_dns):
+            _validate_ip_address(server, f"wifi.{iface_name}.ipv4_dns[{idx}]", require_cidr=False)
     
     # Validate IPv6 method
     if "ipv6_method" in config:
@@ -547,7 +547,7 @@ def _validate_wireguard(iface_name: str, config: Any) -> None:
     
     # Check for unknown fields
     valid_fields = [
-        "enabled", "private_key", "address", "listen_port", "dns",
+        "enabled", "private_key", "ipv4_address", "listen_port", "ipv4_dns",
         "peer_public_key", "peer_preshared_key", "peer_endpoint",
         "peer_allowed_ips", "peer_keepalive"
     ]
@@ -559,9 +559,9 @@ def _validate_wireguard(iface_name: str, config: Any) -> None:
     if "enabled" in config and not isinstance(config["enabled"], bool):
         raise ValidationError(f"wireguard.{iface_name}.enabled must be a boolean")
     
-    # If enabled, require private_key, address, and peer configuration
+    # If enabled, require private_key, ipv4_address, and peer configuration
     if config.get("enabled", True):
-        required = ["private_key", "address", "peer_public_key", "peer_allowed_ips"]
+        required = ["private_key", "ipv4_address", "peer_public_key", "peer_allowed_ips"]
         for field in required:
             if field not in config:
                 raise ValidationError(f"wireguard.{iface_name}.{field} is required when enabled")
@@ -574,9 +574,9 @@ def _validate_wireguard(iface_name: str, config: Any) -> None:
         if not re.match(r'^[A-Za-z0-9+/]{42}[AEIMQUYcgkosw480]=$', private_key):
             raise ValidationError(f"wireguard.{iface_name}.private_key invalid format")
     
-    # Validate address
-    if "address" in config:
-        _validate_ip_address(config["address"], f"wireguard.{iface_name}.address")
+    # Validate IPv4 address
+    if "ipv4_address" in config:
+        _validate_ip_address(config["ipv4_address"], f"wireguard.{iface_name}.ipv4_address")
     
     # Validate listen_port
     if "listen_port" in config:
@@ -586,13 +586,13 @@ def _validate_wireguard(iface_name: str, config: Any) -> None:
         if port < 1 or port > 65535:
             raise ValidationError(f"wireguard.{iface_name}.listen_port must be 1-65535")
     
-    # Validate DNS
-    if "dns" in config:
-        dns = config["dns"]
-        if not isinstance(dns, list):
-            raise ValidationError(f"wireguard.{iface_name}.dns must be a list")
-        for idx, server in enumerate(dns):
-            _validate_ip_address(server, f"wireguard.{iface_name}.dns[{idx}]", require_cidr=False)
+    # Validate IPv4 DNS
+    if "ipv4_dns" in config:
+        ipv4_dns = config["ipv4_dns"]
+        if not isinstance(ipv4_dns, list):
+            raise ValidationError(f"wireguard.{iface_name}.ipv4_dns must be a list")
+        for idx, server in enumerate(ipv4_dns):
+            _validate_ip_address(server, f"wireguard.{iface_name}.ipv4_dns[{idx}]", require_cidr=False)
     
     # Validate peer_public_key
     if "peer_public_key" in config:

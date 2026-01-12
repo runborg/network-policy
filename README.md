@@ -136,18 +136,18 @@ ipv6_method = "auto"  # IPv6 SLAAC/ND
 enabled = true
 priority = 15
 method = "static"
-addresses = ["10.0.1.100/24", "10.0.1.101/24"]  # Multiple IPv4 addresses
-gateway = "10.0.1.1"
-dns = ["10.0.1.1", "8.8.8.8"]
+ipv4_addresses = ["10.0.1.100/24", "10.0.1.101/24"]  # Multiple IPv4 addresses
+ipv4_gateway = "10.0.1.1"
+ipv4_dns = ["10.0.1.1", "8.8.8.8"]
 
 # Ethernet (Dual-stack: Static IPv4 and IPv6)
 [ethernet.eth2]
 enabled = true
 priority = 12
 method = "static"
-addresses = ["192.168.1.100/24"]
-gateway = "192.168.1.1"
-dns = ["192.168.1.1"]
+ipv4_addresses = ["192.168.1.100/24"]
+ipv4_gateway = "192.168.1.1"
+ipv4_dns = ["192.168.1.1"]
 ipv6_method = "static"
 ipv6_addresses = ["2001:db8::100/64", "2001:db8::101/64"]  # Multiple IPv6 addresses
 ipv6_gateway = "2001:db8::1"
@@ -180,7 +180,7 @@ apn = "internet"
 [wireguard.wg0]
 enabled = true
 private_key = "YOUR_PRIVATE_KEY="
-address = "10.200.100.2/24"
+ipv4_address = "10.200.100.2/24"
 peer_public_key = "PEER_PUBLIC_KEY="
 peer_endpoint = "vpn.example.com:51820"
 peer_allowed_ips = ["0.0.0.0/0"]
@@ -207,7 +207,7 @@ allow_established = true
 allow_loopback = true
 
 [firewall.address_groups.trusted]
-addresses = ["192.168.1.0/24", "10.0.0.0/8"]
+ipv4_addresses = ["192.168.1.0/24", "10.0.0.0/8"]
 
 [firewall.services.ssh]
 protocol = "tcp"
@@ -363,7 +363,7 @@ method = "dhcp"
 enabled = true
 priority = 5  # Higher priority than physical interfaces
 private_key = "YOUR_KEY="
-address = "10.200.100.2/24"
+ipv4_address = "10.200.100.2/24"
 peer_public_key = "PEER_KEY="
 peer_endpoint = "vpn.example.com:51820"
 peer_allowed_ips = ["0.0.0.0/0"]  # Route everything

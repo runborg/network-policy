@@ -235,9 +235,9 @@ ipv6_method = "auto"  # SLAAC/ND
 enabled = true
 priority = 15
 method = "static"
-addresses = ["192.168.1.100/24", "192.168.1.101/24"]
-gateway = "192.168.1.1"
-dns = ["192.168.1.1"]
+ipv4_addresses = ["192.168.1.100/24", "192.168.1.101/24"]
+ipv4_gateway = "192.168.1.1"
+ipv4_dns = ["192.168.1.1"]
 ipv6_method = "static"
 ipv6_addresses = ["2001:db8::100/64", "2001:db8::101/64"]
 ipv6_gateway = "2001:db8::1"
@@ -275,7 +275,7 @@ Or edit `/data/network-policy.toml`:
 
 ```toml
 [firewall.address_groups.trusted]
-addresses = ["192.168.1.0/24", "10.0.0.0/8"]
+ipv4_addresses = ["192.168.1.0/24", "10.0.0.0/8"]
 
 [firewall.services.web]
 protocol = "tcp"

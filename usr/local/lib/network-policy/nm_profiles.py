@@ -113,16 +113,16 @@ def create_ethernet_profile(iface_name: str, config: Dict[str, Any]) -> None:
             cmd.extend(["ipv4.method", "manual"])
             
             # Handle multiple addresses or single address
-            if "addresses" in config:
-                cmd.extend(["ipv4.addresses", " ".join(config["addresses"])])
-            elif "address" in config:
-                cmd.extend(["ipv4.addresses", config["address"]])
+            if "ipv4_addresses" in config:
+                cmd.extend(["ipv4.addresses", " ".join(config["ipv4_addresses"])])
+            elif "ipv4_address" in config:
+                cmd.extend(["ipv4.addresses", config["ipv4_address"]])
             
-            if "gateway" in config:
-                cmd.extend(["ipv4.gateway", config["gateway"]])
+            if "ipv4_gateway" in config:
+                cmd.extend(["ipv4.gateway", config["ipv4_gateway"]])
             
-            if "dns" in config:
-                cmd.extend(["ipv4.dns", ",".join(config["dns"])])
+            if "ipv4_dns" in config:
+                cmd.extend(["ipv4.dns", ",".join(config["ipv4_dns"])])
         else:  # auto
             cmd.extend(["ipv4.method", "auto"])
         
@@ -212,16 +212,16 @@ def create_wifi_profile(iface_name: str, config: Dict[str, Any]) -> None:
             cmd.extend(["ipv4.method", "manual"])
             
             # Handle multiple addresses or single address
-            if "addresses" in config:
-                cmd.extend(["ipv4.addresses", " ".join(config["addresses"])])
-            elif "address" in config:
-                cmd.extend(["ipv4.addresses", config["address"]])
+            if "ipv4_addresses" in config:
+                cmd.extend(["ipv4.addresses", " ".join(config["ipv4_addresses"])])
+            elif "ipv4_address" in config:
+                cmd.extend(["ipv4.addresses", config["ipv4_address"]])
             
-            if "gateway" in config:
-                cmd.extend(["ipv4.gateway", config["gateway"]])
+            if "ipv4_gateway" in config:
+                cmd.extend(["ipv4.gateway", config["ipv4_gateway"]])
             
-            if "dns" in config:
-                cmd.extend(["ipv4.dns", ",".join(config["dns"])])
+            if "ipv4_dns" in config:
+                cmd.extend(["ipv4.dns", ",".join(config["ipv4_dns"])])
         else:  # auto
             cmd.extend(["ipv4.method", "auto"])
         
@@ -346,7 +346,7 @@ def create_wireguard_profile(iface_name: str, config: Dict[str, Any]) -> None:
             "autoconnect", "yes",
             "wireguard.private-key", config["private_key"],
             "ipv4.method", "manual",
-            "ipv4.addresses", config["address"]
+            "ipv4.addresses", config["ipv4_address"]
         ]
         
         # Set listen port if provided
@@ -354,8 +354,8 @@ def create_wireguard_profile(iface_name: str, config: Dict[str, Any]) -> None:
             cmd.extend(["wireguard.listen-port", str(config["listen_port"])])
         
         # Set DNS if provided
-        if "dns" in config:
-            cmd.extend(["ipv4.dns", ",".join(config["dns"])])
+        if "ipv4_dns" in config:
+            cmd.extend(["ipv4.dns", ",".join(config["ipv4_dns"])])
         
         # Create connection
         subprocess.run(cmd, check=True, capture_output=True, text=True)
