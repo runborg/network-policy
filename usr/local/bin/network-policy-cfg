@@ -224,8 +224,15 @@ def set_nested_value(config: Dict, path: List[str], value: Any) -> None:
         raise KeyError(f"Cannot set value in non-dict/list")
 
 
-def delete_nested_value(config: Dict, path: List[str]) -> None:
-    """Delete value from nested config dict."""
+def delete_nested_value(config: Dict, path: List[str], value: Any = None) -> None:
+    """
+    Delete value from nested config dict.
+    
+    Args:
+        config: Configuration dictionary
+        path: Path components to the value
+        value: If provided and target is a list, delete by matching this value instead of index
+    """
     if not path:
         raise ValueError("Empty path")
     
@@ -251,11 +258,20 @@ def delete_nested_value(config: Dict, path: List[str]) -> None:
             raise KeyError(f"Key '{last_part}' not found")
         del current[last_part]
     elif isinstance(current, list):
-        try:
-            index = int(last_part)
-            del current[index]
-        except (ValueError, IndexError) as e:
-            raise KeyError(f"Invalid list index '{last_part}': {e}")
+        # Check if we should delete by value or by index
+        if value is not None and last_part == "[]":
+            # Delete by value
+            try:
+                current.remove(value)
+            except ValueError:
+                raise KeyError(f"Value {json.dumps(value)} not found in list")
+        else:
+            # Delete by index
+            try:
+                index = int(last_part)
+                del current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{last_part}': {e}")
     else:
         raise KeyError(f"Cannot delete from non-dict/list")
 
@@ -324,22 +340,11 @@ def cmd_get(args):
 
 
 def cmd_set(args):
-    """Set configuration value."""
+    """Set configuration value(s)."""
     try:
-        debug.log(f"CMD SET: assignment={args.assignment}, config={args.config}")
+        debug.log(f"CMD SET: assignments={args.assignments}, config={args.config}")
         
-        # Parse assignment
-        if '=' not in args.assignment:
-            print("✗ Error: Assignment must be in format 'path=value'")
-            return 1
-        
-        path_str, value_str = args.assignment.split('=', 1)
-        path_parts = parse_config_path(path_str)
-        value = parse_value(value_str)
-        
-        debug.log(f"  PATH: {path_parts}, VALUE: {value}")
-        
-        # Load existing config
+        # Load existing config once
         config_path = Path(args.config)
         if config_path.exists():
             with open(config_path, 'r') as f:
@@ -349,10 +354,25 @@ def cmd_set(args):
             config = {}
             debug.log(f"  Config file does not exist, creating new")
         
-        # Set value
-        set_nested_value(config, path_parts, value)
+        # Process each assignment
+        changes_made = []
+        for assignment in args.assignments:
+            # Parse assignment
+            if '=' not in assignment:
+                print(f"✗ Error: Assignment must be in format 'path=value', got: {assignment}")
+                return 1
+            
+            path_str, value_str = assignment.split('=', 1)
+            path_parts = parse_config_path(path_str)
+            value = parse_value(value_str)
+            
+            debug.log(f"  PATH: {path_parts}, VALUE: {value}")
+            
+            # Set value
+            set_nested_value(config, path_parts, value)
+            changes_made.append((path_str, value))
         
-        # Validate
+        # Validate all changes
         from schema import validate_config
         validate_config(config)
         debug.log("  VALIDATION: passed")
@@ -362,7 +382,9 @@ def cmd_set(args):
             toml.dump(config, f)
         debug.log_file_operation("WRITE", str(config_path))
         
-        print(f"✓ Set {path_str} = {json.dumps(value)}")
+        # Report changes
+        for path_str, value in changes_made:
+            print(f"✓ Set {path_str} = {json.dumps(value)}")
         print(f"✓ Configuration saved to {config_path}")
         
         if args.apply:
@@ -395,11 +417,9 @@ def cmd_set(args):
 
 
 def cmd_del(args):
-    """Delete configuration value."""
+    """Delete configuration value(s)."""
     try:
-        debug.log(f"CMD DEL: path={args.path}, config={args.config}")
-        
-        path_parts = parse_config_path(args.path)
+        debug.log(f"CMD DEL: paths={args.paths}, config={args.config}")
         
         # Load existing config
         config_path = Path(args.config)
@@ -411,8 +431,26 @@ def cmd_del(args):
             config = toml.load(f)
             debug.log_file_operation("READ", str(config_path))
         
-        # Delete value
-        delete_nested_value(config, path_parts)
+        # Process each deletion
+        deletions_made = []
+        for path_arg in args.paths:
+            # Check if this is a value-based list deletion (path.[]=value)
+            value_to_delete = None
+            if '=' in path_arg:
+                path_str, value_str = path_arg.split('=', 1)
+                value_to_delete = parse_value(value_str)
+            else:
+                path_str = path_arg
+            
+            path_parts = parse_config_path(path_str)
+            
+            # Delete value
+            delete_nested_value(config, path_parts, value_to_delete)
+            
+            if value_to_delete is not None:
+                deletions_made.append(f"{path_str}={json.dumps(value_to_delete)}")
+            else:
+                deletions_made.append(path_str)
         
         # Validate
         from schema import validate_config
@@ -424,7 +462,9 @@ def cmd_del(args):
             toml.dump(config, f)
         debug.log_file_operation("WRITE", str(config_path))
         
-        print(f"✓ Deleted {args.path}")
+        # Report deletions
+        for deletion in deletions_made:
+            print(f"✓ Deleted {deletion}")
         print(f"✓ Configuration saved to {config_path}")
         
         if args.apply:
@@ -585,8 +625,11 @@ Examples:
   # View configuration value
   cfg get ethernet.eth0.method
   
-  # Set simple value (does not auto-apply)
+  # Set single value (does not auto-apply)
   cfg set ethernet.eth0.method=dhcp
+  
+  # Set multiple values at once
+  cfg set ethernet.eth0.method=static ethernet.eth0.address="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
   
   # Set with quotes for strings
   cfg set system.hostname="my-gateway"
@@ -594,11 +637,17 @@ Examples:
   # Add to list
   cfg set system.ntp_servers.[]="1.2.3.4"
   
-  # Delete configuration
+  # Delete single configuration
   cfg del ethernet.eth1
+  
+  # Delete multiple configurations at once
+  cfg del ethernet.eth1 wifi.wlan0
   
   # Delete specific list item by index
   cfg del system.ntp_servers.[0]
+  
+  # Delete list item by value
+  cfg del system.ntp_servers.[]="1.2.3.4"
   
   # Set and immediately apply
   cfg set ethernet.eth0.enabled=true --apply
@@ -629,15 +678,15 @@ Examples:
     get_parser.set_defaults(func=cmd_get)
     
     # Set command
-    set_parser = subparsers.add_parser('set', help='Set configuration value')
-    set_parser.add_argument('assignment', help='Assignment in format path=value')
+    set_parser = subparsers.add_parser('set', help='Set configuration value(s)')
+    set_parser.add_argument('assignments', nargs='+', help='One or more assignments in format path=value')
     set_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     set_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     set_parser.set_defaults(func=cmd_set)
     
     # Delete command
-    del_parser = subparsers.add_parser('del', help='Delete configuration value')
-    del_parser.add_argument('path', help='Configuration path to delete (supports list indices like ntp_servers.[1])')
+    del_parser = subparsers.add_parser('del', help='Delete configuration value(s)')
+    del_parser.add_argument('paths', nargs='+', help='One or more paths to delete (supports list indices like ntp_servers.[1] or value matching like ntp_servers.[]="1.2.3.4")')
     del_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     del_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     del_parser.set_defaults(func=cmd_del)

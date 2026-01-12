@@ -130,7 +130,10 @@ sudo journalctl -u network-policy-healthcheck.service -f
 
 **Workflow:**
 ```bash
-# 1. Make your changes
+# 1. Make your changes (multiple values in one command for atomicity)
+cfg set ethernet.eth0.method=static ethernet.eth0.address="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
+
+# OR make changes individually
 cfg set ethernet.eth0.method=static
 cfg set ethernet.eth0.address="192.168.1.100/24"
 cfg set ethernet.eth0.gateway="192.168.1.1"
@@ -145,11 +148,25 @@ cfg reload
 cfg set ethernet.eth0.enabled=true --apply
 ```
 
+**Pro Tips:**
+- Use multiple assignments in one command to ensure related changes are applied together
+- Delete multiple items at once: `cfg del ethernet.eth1 wifi.wlan0`
+- Delete list items by value: `cfg del system.ntp_servers.[]="1.2.3.4"`
+
 ## Common Tasks
 
 ### Add a WiFi Interface
 
-Using the cfg command:
+Using the cfg command (all values in one atomic operation):
+
+```bash
+cfg set wifi.wlan0.enabled=true wifi.wlan0.priority=20 wifi.wlan0.ssid="MyNetwork" wifi.wlan0.psk="MyPassword123" wifi.wlan0.method=dhcp
+
+# Apply the changes
+cfg reload
+```
+
+Or make changes individually:
 
 ```bash
 cfg set wifi.wlan0.enabled=true
@@ -211,25 +228,31 @@ action = "accept"
 
 ### Set Up LTE Failover
 
-Using cfg command:
+Using cfg command (all at once for atomicity):
+```bash
+# Configure all settings in one command
+cfg set ethernet.eth0.enabled=true ethernet.eth0.priority=10 ethernet.eth0.method=dhcp \
+        lte.wwan0.enabled=true lte.wwan0.priority=30 lte.wwan0.device="eg25-g" lte.wwan0.apn="internet" \
+        healthcheck.interval_sec=30 healthcheck.timeout_sec=5 \
+        healthcheck.probe_targets='["8.8.8.8", "1.1.1.1"]' \
+        healthcheck.failures_before_down=3 healthcheck.successes_before_up=2
+
+# Apply all changes
+cfg reload
+```
+
+Or make changes individually:
 ```bash
 # Configure Ethernet as primary
-cfg set ethernet.eth0.enabled=true
-cfg set ethernet.eth0.priority=10
-cfg set ethernet.eth0.method=dhcp
+cfg set ethernet.eth0.enabled=true ethernet.eth0.priority=10 ethernet.eth0.method=dhcp
 
 # Configure LTE as backup
-cfg set lte.wwan0.enabled=true
-cfg set lte.wwan0.priority=30
-cfg set lte.wwan0.device="eg25-g"
-cfg set lte.wwan0.apn="internet"
+cfg set lte.wwan0.enabled=true lte.wwan0.priority=30 lte.wwan0.device="eg25-g" lte.wwan0.apn="internet"
 
 # Configure health monitoring
-cfg set healthcheck.interval_sec=30
-cfg set healthcheck.timeout_sec=5
-cfg set healthcheck.probe_targets='["8.8.8.8", "1.1.1.1"]'
-cfg set healthcheck.failures_before_down=3
-cfg set healthcheck.successes_before_up=2
+cfg set healthcheck.interval_sec=30 healthcheck.timeout_sec=5 \
+        healthcheck.probe_targets='["8.8.8.8", "1.1.1.1"]' \
+        healthcheck.failures_before_down=3 healthcheck.successes_before_up=2
 
 # Apply all changes
 cfg reload

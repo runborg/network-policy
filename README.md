@@ -209,21 +209,28 @@ The `cfg` command (alias for `network-policy-cfg`) provides easy configuration m
 cfg get ethernet.eth0.method
 cfg get firewall.enabled
 
-# Set configuration values (changes saved but not applied)
+# Set single configuration value (changes saved but not applied)
 cfg set ethernet.eth0.method=dhcp
 cfg set system.hostname="my-gateway"
-cfg set firewall.enabled=true
+
+# Set multiple values in one command
+cfg set ethernet.eth0.method=static ethernet.eth0.address="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
 
 # Add to lists
 cfg set system.ntp_servers.[]="1.2.3.4"
 cfg set system.ntp_servers.[]="5.6.7.8"
 
-# Delete configuration
+# Delete single configuration
 cfg del ethernet.eth1
-cfg del wifi.wlan0
+
+# Delete multiple configurations at once
+cfg del ethernet.eth1 wifi.wlan0
 
 # Delete specific list item by index
 cfg del system.ntp_servers.[0]
+
+# Delete list item by value
+cfg del system.ntp_servers.[]="1.2.3.4"
 
 # Set and immediately apply changes
 cfg set ethernet.eth0.enabled=true --apply
@@ -240,6 +247,11 @@ cfg --debug reload
 ```
 
 **Note:** By default, `cfg set` and `cfg del` save changes to the configuration file but do NOT automatically apply them. This allows you to make multiple related changes (e.g., changing method and address together) before applying. Use `cfg reload` to validate and apply changes, or use the `--apply` flag to apply immediately.
+
+**New Features:**
+- **Multiple assignments**: Set multiple values in one command for atomicity
+- **Multiple deletions**: Delete multiple paths in one command
+- **Delete by value**: Delete list items by matching their value instead of index
 
 ### Control Commands
 
