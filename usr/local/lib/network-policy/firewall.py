@@ -2,16 +2,18 @@
 Firewall management with nftables.
 
 Implements stateful firewall with:
-- Address group sets
+- Address group sets (IPv4 and IPv6)
 - Service definitions  
 - Input chain with stateful filtering
 - Multiple source groups per rule (OR logic)
 - Per-rule logging with custom prefixes
 - Integration with policy routing marks
+- Full IPv6 support
 """
 
 import subprocess
-from typing import Dict, Any, List, Set
+import ipaddress
+from typing import Dict, Any, List, Set, Tuple
 from pathlib import Path
 
 from .logger import get_logger
@@ -63,9 +65,67 @@ def _cleanup_firewall() -> None:
         logger.error(f"Error removing firewall rules: {e}")
 
 
+def _classify_addresses(addresses: List[str]) -> Tuple[List[str], List[str]]:
+    """
+    Classify addresses into IPv4 and IPv6.
+    
+    Args:
+        addresses: List of IP addresses/networks
+        
+    Returns:
+        Tuple of (ipv4_addresses, ipv6_addresses)
+    """
+    ipv4_addrs = []
+    ipv6_addrs = []
+    
+    for addr in addresses:
+        try:
+            # Parse the address/network
+            ip_net = ipaddress.ip_network(addr, strict=False)
+            if ip_net.version == 4:
+                ipv4_addrs.append(addr)
+            else:
+                ipv6_addrs.append(addr)
+        except ValueError:
+            # If parsing fails, skip (should have been caught in validation)
+            logger.warning(f"Skipping invalid address in firewall: {addr}")
+    
+    return ipv4_addrs, ipv6_addrs
+
+
+def _generate_service_match(service: Dict[str, Any], ipv6: bool = False) -> str:
+    """
+    Generate nftables match expression for a service.
+    
+    Args:
+        service: Service configuration dictionary
+        ipv6: If True, generate IPv6-specific match (for ICMP)
+        
+    Returns:
+        nftables match expression string
+    """
+    protocol = service["protocol"]
+    ports = service["ports"]
+    
+    if protocol in ["tcp", "udp"]:
+        if len(ports) == 1:
+            return f"{protocol} dport {ports[0]} "
+        else:
+            port_list = ", ".join(str(p) for p in ports)
+            return f"{protocol} dport {{ {port_list} }} "
+    elif protocol == "icmp":
+        # Use icmpv6 for IPv6, icmp for IPv4
+        if ipv6:
+            return "icmpv6 type echo-request "
+        else:
+            return "icmp type echo-request "
+    
+    return ""
+
+
 def _generate_nftables_ruleset(config: Dict[str, Any]) -> str:
     """
-    Generate complete nftables ruleset.
+    Generate complete nftables ruleset with IPv4 and IPv6 support.
     
     Args:
         config: Complete configuration dictionary
@@ -87,16 +147,29 @@ def _generate_nftables_ruleset(config: Dict[str, Any]) -> str:
     lines.append("table inet network-policy {")
     lines.append("")
     
-    # Define address group sets
+    # Define address group sets (separate IPv4 and IPv6)
     if "address_groups" in firewall_config:
         for group_name, group_config in firewall_config["address_groups"].items():
             addresses = group_config["addresses"]
-            lines.append(f"    set {group_name} {{")
-            lines.append("        type ipv4_addr")
-            lines.append("        flags interval")
-            lines.append(f"        elements = {{ {', '.join(addresses)} }}")
-            lines.append("    }")
-            lines.append("")
+            ipv4_addrs, ipv6_addrs = _classify_addresses(addresses)
+            
+            # Create IPv4 set if there are IPv4 addresses
+            if ipv4_addrs:
+                lines.append(f"    set {group_name}_v4 {{")
+                lines.append("        type ipv4_addr")
+                lines.append("        flags interval")
+                lines.append(f"        elements = {{ {', '.join(ipv4_addrs)} }}")
+                lines.append("    }")
+                lines.append("")
+            
+            # Create IPv6 set if there are IPv6 addresses
+            if ipv6_addrs:
+                lines.append(f"    set {group_name}_v6 {{")
+                lines.append("        type ipv6_addr")
+                lines.append("        flags interval")
+                lines.append(f"        elements = {{ {', '.join(ipv6_addrs)} }}")
+                lines.append("    }")
+                lines.append("")
     
     # Input chain
     lines.append("    chain input {")
@@ -117,28 +190,87 @@ def _generate_nftables_ruleset(config: Dict[str, Any]) -> str:
     # Add custom input rules
     if "input_rules" in firewall_config:
         services = firewall_config.get("services", {})
+        address_groups = firewall_config.get("address_groups", {})
         
         for idx, rule in enumerate(firewall_config["input_rules"]):
             comment = rule.get("comment", f"Rule {idx + 1}")
             lines.append(f"        # {comment}")
             
-            rule_line = "        "
+            # Build conditions for IPv4 and IPv6 separately if needed
+            has_source_groups = "source_groups" in rule
+            has_service = "service" in rule
             
-            # Add source group conditions (OR logic)
-            if "source_groups" in rule:
+            if has_source_groups:
+                # Need to generate separate rules for IPv4 and IPv6
                 source_groups = rule["source_groups"]
-                if len(source_groups) == 1:
-                    rule_line += f"ip saddr @{source_groups[0]} "
-                else:
-                    # Multiple source groups - use OR logic
-                    conditions = " || ".join([f"ip saddr @{sg}" for sg in source_groups])
-                    rule_line += f"({conditions}) "
-            
-            # Add service conditions
-            if "service" in rule:
-                service_name = rule["service"]
-                if service_name in services:
-                    service = services[service_name]
+                
+                # Check which groups have IPv4/IPv6 addresses
+                has_ipv4 = any(
+                    _classify_addresses(address_groups[sg]["addresses"])[0]
+                    for sg in source_groups
+                )
+                has_ipv6 = any(
+                    _classify_addresses(address_groups[sg]["addresses"])[1]
+                    for sg in source_groups
+                )
+                
+                # Generate IPv4 rule if applicable
+                if has_ipv4:
+                    rule_line = "        "
+                    
+                    # Add source group conditions (OR logic)
+                    if len(source_groups) == 1:
+                        rule_line += f"ip saddr @{source_groups[0]}_v4 "
+                    else:
+                        # Multiple source groups - use OR logic
+                        conditions = " || ".join([f"ip saddr @{sg}_v4" for sg in source_groups])
+                        rule_line += f"({conditions}) "
+                    
+                    # Add service conditions
+                    if has_service:
+                        rule_line += _generate_service_match(services[rule["service"]])
+                    
+                    # Add logging if requested
+                    if rule.get("log", False):
+                        log_prefix = rule.get("log_prefix", f"FW-{comment[:20]}: ")
+                        rule_line += f'log prefix "{log_prefix}" '
+                    
+                    # Add action
+                    rule_line += rule["action"]
+                    lines.append(rule_line)
+                
+                # Generate IPv6 rule if applicable
+                if has_ipv6:
+                    rule_line = "        "
+                    
+                    # Add source group conditions (OR logic)
+                    if len(source_groups) == 1:
+                        rule_line += f"ip6 saddr @{source_groups[0]}_v6 "
+                    else:
+                        # Multiple source groups - use OR logic
+                        conditions = " || ".join([f"ip6 saddr @{sg}_v6" for sg in source_groups])
+                        rule_line += f"({conditions}) "
+                    
+                    # Add service conditions
+                    if has_service:
+                        rule_line += _generate_service_match(services[rule["service"]], ipv6=True)
+                    
+                    # Add logging if requested
+                    if rule.get("log", False):
+                        log_prefix = rule.get("log_prefix", f"FW-{comment[:20]}: ")
+                        rule_line += f'log prefix "{log_prefix}" '
+                    
+                    # Add action
+                    rule_line += rule["action"]
+                    lines.append(rule_line)
+            else:
+                # No source groups - single rule for both IPv4 and IPv6
+                rule_line = "        "
+                
+                # Add service conditions
+                if has_service:
+                    # Generate match that works for both IPv4 and IPv6
+                    service = services[rule["service"]]
                     protocol = service["protocol"]
                     ports = service["ports"]
                     
@@ -149,18 +281,18 @@ def _generate_nftables_ruleset(config: Dict[str, Any]) -> str:
                             port_list = ", ".join(str(p) for p in ports)
                             rule_line += f"{protocol} dport {{ {port_list} }} "
                     elif protocol == "icmp":
-                        rule_line += "icmp type echo-request "
+                        # For ICMP without source filtering, match both IPv4 and IPv6
+                        rule_line += "meta l4proto { icmp, icmpv6 } "
+                
+                # Add logging if requested
+                if rule.get("log", False):
+                    log_prefix = rule.get("log_prefix", f"FW-{comment[:20]}: ")
+                    rule_line += f'log prefix "{log_prefix}" '
+                
+                # Add action
+                rule_line += rule["action"]
+                lines.append(rule_line)
             
-            # Add logging if requested
-            if rule.get("log", False):
-                log_prefix = rule.get("log_prefix", f"FW-{comment[:20]}: ")
-                rule_line += f'log prefix "{log_prefix}" '
-            
-            # Add action
-            action = rule["action"]
-            rule_line += action
-            
-            lines.append(rule_line)
             lines.append("")
     
     # Default policy

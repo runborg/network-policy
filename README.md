@@ -199,6 +199,8 @@ peer_allowed_ips = ["0.0.0.0/0"]
 
 ### Firewall
 
+Full IPv6 support - address groups can contain both IPv4 and IPv6 addresses:
+
 ```toml
 [firewall]
 enabled = true
@@ -206,15 +208,21 @@ default_input_policy = "drop"
 allow_established = true
 allow_loopback = true
 
+# Address groups support both IPv4 and IPv6
 [firewall.address_groups.trusted]
-ipv4_addresses = ["192.168.1.0/24", "10.0.0.0/8"]
+addresses = [
+    "192.168.1.0/24",
+    "10.0.0.0/8",
+    "2001:db8::/32",
+    "fd00::/8"
+]
 
 [firewall.services.ssh]
 protocol = "tcp"
 ports = [22]
 
 [[firewall.input_rules]]
-comment = "Allow SSH from trusted networks"
+comment = "Allow SSH from trusted networks (IPv4 and IPv6)"
 source_groups = ["trusted"]
 service = "ssh"
 action = "accept"

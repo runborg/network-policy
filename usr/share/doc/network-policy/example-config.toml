@@ -212,24 +212,28 @@ allow_loopback = true
 # Address Groups
 # -----------------------------------------------------------------------------
 # Define reusable sets of IP addresses/networks
+# Address groups support both IPv4 and IPv6 addresses mixed together
 
 [firewall.address_groups.trusted]
-description = "Trusted admin networks"
+description = "Trusted admin networks (IPv4 and IPv6)"
 addresses = [
     "192.168.1.0/24",
     "10.0.0.0/8",
-    "172.16.0.0/12"
+    "172.16.0.0/12",
+    "2001:db8::/32",
+    "fd00::/8"
 ]
 
 [firewall.address_groups.vpn_clients]
 description = "VPN client network"
-addresses = ["10.200.100.0/24"]
+addresses = ["10.200.100.0/24", "fd00:100::/64"]
 
 [firewall.address_groups.internal]
-description = "Internal networks"
+description = "Internal networks (IPv4 and IPv6)"
 addresses = [
     "10.0.1.0/24",
-    "192.168.0.0/16"
+    "192.168.0.0/16",
+    "2001:db8:1000::/48"
 ]
 
 # -----------------------------------------------------------------------------
