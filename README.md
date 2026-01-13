@@ -264,11 +264,12 @@ cfg set ethernet.eth0.ipv4_addresses.[]="192.168.1.101/24"
 cfg set ethernet.eth0.ipv6_addresses.[]="2001:db8::101/64"
 
 # Add ordered items (like firewall rules) at specific position
-cfg add firewall.input_rules.[0] comment="Allow SSH" service=ssh action=accept
-cfg add firewall.input_rules.[] comment="Drop all" action=drop  # Append to end
+# Use {N} notation (no quotes needed) or [N] with quotes
+cfg add firewall.input_rules.{0} comment="Allow SSH" service=ssh action=accept
+cfg add firewall.input_rules.{} comment="Drop all" action=drop  # Append to end
 
 # Modify existing list item (change element at index 0)
-cfg set firewall.input_rules.[0].action=drop
+cfg set firewall.input_rules.{0}.action=drop
 
 # Delete single configuration
 cfg del ethernet.eth1
@@ -277,9 +278,9 @@ cfg del ethernet.eth1
 cfg del ethernet.eth1 wifi.wlan0
 
 # Delete specific list item by index
-cfg del system.ntp_servers.[0]
-cfg del firewall.input_rules.[2]
-cfg del ethernet.eth0.ipv4_addresses.[1]
+cfg del system.ntp_servers.{0}
+cfg del firewall.input_rules.{2}
+cfg del ethernet.eth0.ipv4_addresses.{1}
 
 # Delete list item by value
 cfg del system.ntp_servers.[]="1.2.3.4"

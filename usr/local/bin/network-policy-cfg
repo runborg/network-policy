@@ -119,28 +119,40 @@ def parse_config_path(path: str) -> List[str]:
     """
     Parse configuration path into components.
     
+    Supports both [N] and {N} for list indices:
+    - [N] requires quotes in bash (globbing)
+    - {N} does not require quotes in bash
+    
     Examples:
         "ethernet.eth0.method" -> ["ethernet", "eth0", "method"]
         "firewall.input_rules.[0].action" -> ["firewall", "input_rules", "0", "action"]
+        "firewall.input_rules.{0}.action" -> ["firewall", "input_rules", "0", "action"]
         "ntp_servers.[]" -> ["ntp_servers", "[]"]
+        "ntp_servers.{}" -> ["ntp_servers", "[]"]
     """
-    # Handle array append notation
+    # Handle array append notation with both [] and {}
     parts = []
     current = ""
     in_brackets = False
+    bracket_type = None
     
     for char in path:
-        if char == '[':
+        if char in '[{':
             if current:
                 parts.append(current)
                 current = ""
             in_brackets = True
-            current = "["
-        elif char == ']':
-            current += "]"
-            parts.append(current)
-            current = ""
-            in_brackets = False
+            bracket_type = char
+            current = "["  # Normalize both to [
+        elif char in ']}':
+            if in_brackets and ((char == ']' and bracket_type == '[') or (char == '}' and bracket_type == '{')):
+                current += "]"  # Normalize both to ]
+                parts.append(current)
+                current = ""
+                in_brackets = False
+                bracket_type = None
+            else:
+                current += char
         elif char == '.' and not in_brackets:
             if current:
                 parts.append(current)
@@ -560,16 +572,21 @@ def cmd_add(args):
             debug.log(f"  Config file does not exist, creating new")
         
         # Parse the path - extract position from path
-        # Format: firewall.input_rules.[0] or firewall.input_rules.[] (append)
+        # Format: firewall.input_rules.{0} or firewall.input_rules.{} (append)
+        # Also supports: firewall.input_rules.[0] or firewall.input_rules.[] (append)
         path_str = args.path
-        if path_str.endswith('.[]'):
+        if path_str.endswith('.[]') or path_str.endswith('.{}'):
             # Append to end
             base_path = path_str[:-3]
             position = -1
-        elif '.[' in path_str and path_str.endswith(']'):
+        elif ('.[' in path_str and path_str.endswith(']')) or ('.{' in path_str and path_str.endswith('}')):
             # Position specified in path
-            base_path = path_str[:path_str.rfind('.[')]
-            pos_str = path_str[path_str.rfind('.[') + 2:-1]
+            if '.[' in path_str:
+                base_path = path_str[:path_str.rfind('.[')]
+                pos_str = path_str[path_str.rfind('.[') + 2:-1]
+            else:
+                base_path = path_str[:path_str.rfind('.{')]
+                pos_str = path_str[path_str.rfind('.{') + 2:-1]
             try:
                 position = int(pos_str)
             except ValueError:
@@ -577,8 +594,9 @@ def cmd_add(args):
                 return 1
         else:
             # No position in path - error, must specify position
-            print(f"✗ Error: Path must include position .[N] or .[] for append, got: {path_str}")
-            print(f"  Examples: firewall.input_rules.[0], firewall.input_rules.[]")
+            print(f"✗ Error: Path must include position .{{N}} or .{{}} for append, got: {path_str}")
+            print(f"  Examples: firewall.input_rules.{{0}}, firewall.input_rules.{{}}")
+            print(f"  Or with quotes: 'firewall.input_rules.[0]', 'firewall.input_rules.[]'")
             return 1
         
         path_parts = parse_config_path(base_path)
@@ -782,17 +800,22 @@ Examples:
   # Set with quotes for strings
   cfg set system.hostname="my-gateway"
   
-  # Add to list (append)
+  # Add to list (append) - use {} to avoid bash quoting, or [] with quotes
+  cfg set system.ntp_servers.{}="1.2.3.4"
   cfg set system.ntp_servers.[]="1.2.3.4"
   
   # Add firewall rule at specific position (insert at position 0)
-  cfg add "firewall.input_rules.[0] comment='Allow SSH' service=ssh action=accept" -p 0
+  # Use {N} notation (no quotes needed in bash) or [N] (requires quotes)
+  cfg add firewall.input_rules.{0} comment="Allow SSH" service=ssh action=accept
+  cfg add 'firewall.input_rules.[0]' comment="Allow SSH" service=ssh action=accept
   
   # Add firewall rule at end (append)
-  cfg add "firewall.input_rules.[] comment='Drop all' action=drop"
+  cfg add firewall.input_rules.{} comment="Drop all" action=drop
+  cfg add 'firewall.input_rules.[]' comment="Drop all" action=drop
   
   # Modify existing value (change element 0)
-  cfg set firewall.input_rules.[0].action=drop
+  cfg set firewall.input_rules.{0}.action=drop
+  cfg set 'firewall.input_rules.[0].action'=drop
   
   # Delete single configuration
   cfg del ethernet.eth1
@@ -801,13 +824,14 @@ Examples:
   cfg del ethernet.eth1 wifi.wlan0
   
   # Delete specific list item by index
-  cfg del system.ntp_servers.[0]
+  cfg del system.ntp_servers.{0}
+  cfg del 'system.ntp_servers.[0]'
   
   # Delete firewall rule at position 2
-  cfg del firewall.input_rules.[2]
+  cfg del firewall.input_rules.{2}
   
   # Delete list item by value
-  cfg del system.ntp_servers.[]="1.2.3.4"
+  cfg del system.ntp_servers.{}="1.2.3.4"
   
   # Set and immediately apply
   cfg set ethernet.eth0.enabled=true --apply
@@ -820,6 +844,10 @@ Examples:
   
   # Show status
   cfg status
+
+Note: List indices support both {N} and [N] notation:
+  - {N} or {} - No quotes needed in bash (recommended)
+  - [N] or [] - Requires quotes in bash (e.g., '[0]' or "[]")
 """
     )
     
@@ -846,14 +874,14 @@ Examples:
     
     # Delete command
     del_parser = subparsers.add_parser('del', help='Delete configuration value(s)')
-    del_parser.add_argument('paths', nargs='+', help='One or more paths to delete (supports list indices like ntp_servers.[1] or value matching like ntp_servers.[]="1.2.3.4")')
+    del_parser.add_argument('paths', nargs='+', help='One or more paths to delete (supports list indices like ntp_servers.{1} or ntp_servers.[1] with quotes, or value matching like ntp_servers.{}="1.2.3.4")')
     del_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     del_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     del_parser.set_defaults(func=cmd_del)
     
     # Add command
     add_parser = subparsers.add_parser('add', help='Add item to list at specific position')
-    add_parser.add_argument('path', help='Path with position: path.[N] where [N] is position or [] for append (e.g., firewall.input_rules.[0] or firewall.input_rules.[])')
+    add_parser.add_argument('path', help='Path with position: path.{N} or path.[N] where N is position or empty for append (e.g., firewall.input_rules.{0} or firewall.input_rules.{})')
     add_parser.add_argument('assignments', nargs='+', help='One or more key=value pairs for the new item (e.g., comment="Allow SSH" service=ssh action=accept)')
     add_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     add_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')

@@ -150,11 +150,12 @@ cfg set ethernet.eth0.enabled=true --apply
 
 **Pro Tips:**
 - Use multiple assignments in one command to ensure related changes are applied together
-- Add ordered items (like firewall rules): `cfg add firewall.input_rules.[0] comment="Allow SSH" service=ssh action=accept`
-- Modify existing list items by index: `cfg set firewall.input_rules.[0].action=drop`
+- Add ordered items (like firewall rules): `cfg add firewall.input_rules.{0} comment="Allow SSH" service=ssh action=accept`
+- Modify existing list items by index: `cfg set firewall.input_rules.{0}.action=drop`
 - Delete multiple items at once: `cfg del ethernet.eth1 wifi.wlan0`
-- Delete list items by value: `cfg del system.ntp_servers.[]="1.2.3.4"`
-- Delete list items by index: `cfg del firewall.input_rules.[2]`
+- Delete list items by value: `cfg del system.ntp_servers.{}="1.2.3.4"`
+- Delete list items by index: `cfg del firewall.input_rules.{2}`
+- **Note:** Use `{N}` or `{}` notation (no bash quoting needed) or `[N]`/`[]` with quotes
 
 ## Common Tasks
 
