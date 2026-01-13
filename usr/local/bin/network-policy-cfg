@@ -224,6 +224,55 @@ def set_nested_value(config: Dict, path: List[str], value: Any) -> None:
         raise KeyError(f"Cannot set value in non-dict/list")
 
 
+def insert_nested_value(config: Dict, path: List[str], value: Any, position: int = None) -> None:
+    """
+    Insert value into nested config list at specific position.
+    
+    Args:
+        config: Configuration dictionary
+        path: Path components to the list
+        value: Value to insert (typically a dict for array-of-tables)
+        position: Position to insert at (None or -1 for append, 0 for prepend, etc.)
+    """
+    if not path:
+        raise ValueError("Empty path")
+    
+    current = config
+    for part in path[:-1]:
+        if isinstance(current, dict):
+            if part not in current:
+                raise KeyError(f"Path component '{part}' not found")
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                current = current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{part}': {e}")
+        else:
+            raise KeyError(f"Cannot traverse into non-dict/list at '{part}'")
+    
+    # Insert into the final component
+    last_part = path[-1]
+    if isinstance(current, dict):
+        # Navigate to or create the list
+        if last_part not in current:
+            current[last_part] = []
+        target = current[last_part]
+        if not isinstance(target, list):
+            raise ValueError(f"Cannot insert into non-list at '{last_part}'")
+        
+        # Insert at position
+        if position is None or position == -1:
+            target.append(value)
+        else:
+            if position < 0 or position > len(target):
+                raise IndexError(f"Insert position {position} out of range (list has {len(target)} items)")
+            target.insert(position, value)
+    else:
+        raise KeyError(f"Parent is not a dict, cannot insert")
+
+
 def delete_nested_value(config: Dict, path: List[str], value: Any = None) -> None:
     """
     Delete value from nested config dict.
@@ -495,6 +544,119 @@ def cmd_del(args):
         return 1
 
 
+def cmd_add(args):
+    """Add item(s) to list at specific position."""
+    try:
+        debug.log(f"CMD ADD: items={args.items}, position={args.position}, config={args.config}")
+        
+        # Load existing config
+        config_path = Path(args.config)
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = toml.load(f)
+                debug.log_file_operation("READ", str(config_path))
+        else:
+            config = {}
+            debug.log(f"  Config file does not exist, creating new")
+        
+        # Process each item to add
+        additions_made = []
+        for item in args.items:
+            # Parse the item - format is "path key1=value1 key2=value2..."
+            parts = item.split(None, 1)  # Split on first whitespace
+            if len(parts) < 2:
+                print(f"✗ Error: Item must be in format 'path key=value [key=value ...]', got: {item}")
+                return 1
+            
+            path_str = parts[0]
+            assignments_str = parts[1]
+            
+            # Parse the path - extract position if specified
+            # Format: firewall.input_rules.[0] or firewall.input_rules.[] (append)
+            if path_str.endswith('.[' + str(args.position) + ']'):
+                # Position specified in path
+                base_path = path_str[:path_str.rfind('.[')]
+                position = args.position
+            elif path_str.endswith('.[]'):
+                # Append to end
+                base_path = path_str[:-3]
+                position = -1
+            elif '.[' in path_str and path_str.endswith(']'):
+                # Position specified in path (different from flag)
+                base_path = path_str[:path_str.rfind('.[')]
+                pos_str = path_str[path_str.rfind('.[') + 2:-1]
+                try:
+                    position = int(pos_str)
+                except ValueError:
+                    print(f"✗ Error: Invalid position in path: {path_str}")
+                    return 1
+            else:
+                # No position in path, use flag value
+                base_path = path_str
+                position = args.position
+            
+            path_parts = parse_config_path(base_path)
+            
+            # Parse the key=value pairs into a dict
+            item_dict = {}
+            for assignment in assignments_str.split():
+                if '=' not in assignment:
+                    print(f"✗ Error: Assignment must be in format 'key=value', got: {assignment}")
+                    return 1
+                key, value_str = assignment.split('=', 1)
+                value = parse_value(value_str)
+                item_dict[key] = value
+            
+            debug.log(f"  PATH: {path_parts}, POSITION: {position}, VALUE: {item_dict}")
+            
+            # Insert the item
+            insert_nested_value(config, path_parts, item_dict, position)
+            additions_made.append((base_path, position, item_dict))
+        
+        # Validate all changes
+        from schema import validate_config
+        validate_config(config)
+        debug.log("  VALIDATION: passed")
+        
+        # Save config
+        with open(config_path, 'w') as f:
+            toml.dump(config, f)
+        debug.log_file_operation("WRITE", str(config_path))
+        
+        # Report additions
+        for base_path, position, item_dict in additions_made:
+            pos_desc = "end" if position == -1 else f"position {position}"
+            print(f"✓ Added to {base_path} at {pos_desc}: {json.dumps(item_dict)}")
+        print(f"✓ Configuration saved to {config_path}")
+        
+        if args.apply:
+            print("\nApplying configuration changes...")
+            result = subprocess.run(
+                ["network-policy-cfg", "reload", "-c", str(config_path)],
+                capture_output=True,
+                text=True
+            )
+            debug.log_command(["network-policy-cfg", "reload", "-c", str(config_path)])
+            debug.log_result(result.returncode, result.stdout, result.stderr)
+            
+            if result.returncode != 0:
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
+        
+        return 0
+    except ValidationError as e:
+        print(f"✗ Validation error: {e}")
+        debug.log(f"  VALIDATION ERROR: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
 def cmd_export(args):
     """Export configuration as cfg commands."""
     try:
@@ -629,13 +791,22 @@ Examples:
   cfg set ethernet.eth0.method=dhcp
   
   # Set multiple values at once
-  cfg set ethernet.eth0.method=static ethernet.eth0.address="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
+  cfg set ethernet.eth0.method=static ethernet.eth0.ipv4_address="192.168.1.100/24" ethernet.eth0.ipv4_gateway="192.168.1.1"
   
   # Set with quotes for strings
   cfg set system.hostname="my-gateway"
   
-  # Add to list
+  # Add to list (append)
   cfg set system.ntp_servers.[]="1.2.3.4"
+  
+  # Add firewall rule at specific position (insert at position 0)
+  cfg add "firewall.input_rules.[0] comment='Allow SSH' service=ssh action=accept" -p 0
+  
+  # Add firewall rule at end (append)
+  cfg add "firewall.input_rules.[] comment='Drop all' action=drop"
+  
+  # Modify existing value (change element 0)
+  cfg set firewall.input_rules.[0].action=drop
   
   # Delete single configuration
   cfg del ethernet.eth1
@@ -645,6 +816,9 @@ Examples:
   
   # Delete specific list item by index
   cfg del system.ntp_servers.[0]
+  
+  # Delete firewall rule at position 2
+  cfg del firewall.input_rules.[2]
   
   # Delete list item by value
   cfg del system.ntp_servers.[]="1.2.3.4"
@@ -690,6 +864,14 @@ Examples:
     del_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     del_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     del_parser.set_defaults(func=cmd_del)
+    
+    # Add command
+    add_parser = subparsers.add_parser('add', help='Add item(s) to list at specific position')
+    add_parser.add_argument('items', nargs='+', help='One or more items to add in format: "path key=value [key=value ...]" (e.g., "firewall.input_rules.[] comment=\\"Allow SSH\\" service=ssh action=accept")')
+    add_parser.add_argument('-p', '--position', type=int, default=-1, help='Position to insert at (default: -1 for append, 0 for prepend)')
+    add_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    add_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
+    add_parser.set_defaults(func=cmd_add)
     
     # Export command
     export_parser = subparsers.add_parser('export', help='Export config as cfg commands')

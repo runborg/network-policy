@@ -255,13 +255,20 @@ cfg set ethernet.eth0.method=dhcp
 cfg set system.hostname="my-gateway"
 
 # Set multiple values in one command (including IPv6)
-cfg set ethernet.eth0.method=static ethernet.eth0.addresses.[]="192.168.1.100/24" ethernet.eth0.gateway="192.168.1.1"
+cfg set ethernet.eth0.method=static ethernet.eth0.ipv4_addresses.[]="192.168.1.100/24" ethernet.eth0.ipv4_gateway="192.168.1.1"
 cfg set ethernet.eth0.ipv6_method=static ethernet.eth0.ipv6_addresses.[]="2001:db8::100/64" ethernet.eth0.ipv6_gateway="2001:db8::1"
 
-# Add to lists
+# Add to simple lists
 cfg set system.ntp_servers.[]="1.2.3.4"
-cfg set ethernet.eth0.addresses.[]="192.168.1.101/24"
+cfg set ethernet.eth0.ipv4_addresses.[]="192.168.1.101/24"
 cfg set ethernet.eth0.ipv6_addresses.[]="2001:db8::101/64"
+
+# Add ordered items (like firewall rules) at specific position
+cfg add "firewall.input_rules.[0] comment='Allow SSH' service=ssh action=accept" -p 0
+cfg add "firewall.input_rules.[] comment='Drop all' action=drop"  # Append to end
+
+# Modify existing list item (change element at index 0)
+cfg set firewall.input_rules.[0].action=drop
 
 # Delete single configuration
 cfg del ethernet.eth1
@@ -271,7 +278,8 @@ cfg del ethernet.eth1 wifi.wlan0
 
 # Delete specific list item by index
 cfg del system.ntp_servers.[0]
-cfg del ethernet.eth0.addresses.[1]
+cfg del firewall.input_rules.[2]
+cfg del ethernet.eth0.ipv4_addresses.[1]
 
 # Delete list item by value
 cfg del system.ntp_servers.[]="1.2.3.4"
@@ -293,10 +301,12 @@ cfg --debug reload
 
 **Note:** By default, `cfg set` and `cfg del` save changes to the configuration file but do NOT automatically apply them. This allows you to make multiple related changes (e.g., changing method and address together) before applying. Use `cfg reload` to validate and apply changes, or use the `--apply` flag to apply immediately.
 
-**New Features:**
+**CLI Features:**
+- **cfg add**: Insert items into ordered lists (like firewall rules) at specific positions
 - **Multiple assignments**: Set multiple values in one command for atomicity
 - **Multiple deletions**: Delete multiple paths in one command
 - **Delete by value**: Delete list items by matching their value instead of index
+- **Position control**: Use `.[index]` to specify position, `.[]` to append
 
 ### Control Commands
 
