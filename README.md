@@ -264,7 +264,7 @@ cfg set ethernet.eth0.ipv4_addresses.[]="192.168.1.101/24"
 cfg set ethernet.eth0.ipv6_addresses.[]="2001:db8::101/64"
 
 # Add ordered items (like firewall rules) at specific position
-cfg add "firewall.input_rules.[0] comment='Allow SSH' service=ssh action=accept" -p 0
+cfg add "firewall.input_rules.[0] comment='Allow SSH' service=ssh action=accept"
 cfg add "firewall.input_rules.[] comment='Drop all' action=drop"  # Append to end
 
 # Modify existing list item (change element at index 0)
