@@ -547,7 +547,7 @@ def cmd_del(args):
 def cmd_add(args):
     """Add item(s) to list at specific position."""
     try:
-        debug.log(f"CMD ADD: items={args.items}, config={args.config}")
+        debug.log(f"CMD ADD: path={args.path}, assignments={args.assignments}, config={args.config}")
         
         # Load existing config
         config_path = Path(args.config)
@@ -559,56 +559,45 @@ def cmd_add(args):
             config = {}
             debug.log(f"  Config file does not exist, creating new")
         
-        # Process each item to add
-        additions_made = []
-        for item in args.items:
-            # Parse the item - format is "path key1=value1 key2=value2..."
-            parts = item.split(None, 1)  # Split on first whitespace
-            if len(parts) < 2:
-                print(f"✗ Error: Item must be in format 'path key=value [key=value ...]', got: {item}")
+        # Parse the path - extract position from path
+        # Format: firewall.input_rules.[0] or firewall.input_rules.[] (append)
+        path_str = args.path
+        if path_str.endswith('.[]'):
+            # Append to end
+            base_path = path_str[:-3]
+            position = -1
+        elif '.[' in path_str and path_str.endswith(']'):
+            # Position specified in path
+            base_path = path_str[:path_str.rfind('.[')]
+            pos_str = path_str[path_str.rfind('.[') + 2:-1]
+            try:
+                position = int(pos_str)
+            except ValueError:
+                print(f"✗ Error: Invalid position in path: {path_str}")
                 return 1
-            
-            path_str = parts[0]
-            assignments_str = parts[1]
-            
-            # Parse the path - extract position from path
-            # Format: firewall.input_rules.[0] or firewall.input_rules.[] (append)
-            if path_str.endswith('.[]'):
-                # Append to end
-                base_path = path_str[:-3]
-                position = -1
-            elif '.[' in path_str and path_str.endswith(']'):
-                # Position specified in path
-                base_path = path_str[:path_str.rfind('.[')]
-                pos_str = path_str[path_str.rfind('.[') + 2:-1]
-                try:
-                    position = int(pos_str)
-                except ValueError:
-                    print(f"✗ Error: Invalid position in path: {path_str}")
-                    return 1
-            else:
-                # No position in path - error, must specify position
-                print(f"✗ Error: Path must include position .[N] or .[] for append, got: {path_str}")
-                print(f"  Examples: firewall.input_rules.[0], firewall.input_rules.[]")
+        else:
+            # No position in path - error, must specify position
+            print(f"✗ Error: Path must include position .[N] or .[] for append, got: {path_str}")
+            print(f"  Examples: firewall.input_rules.[0], firewall.input_rules.[]")
+            return 1
+        
+        path_parts = parse_config_path(base_path)
+        
+        # Parse the key=value pairs into a dict
+        item_dict = {}
+        for assignment in args.assignments:
+            if '=' not in assignment:
+                print(f"✗ Error: Assignment must be in format 'key=value', got: {assignment}")
                 return 1
-            
-            path_parts = parse_config_path(base_path)
-            
-            # Parse the key=value pairs into a dict
-            item_dict = {}
-            for assignment in assignments_str.split():
-                if '=' not in assignment:
-                    print(f"✗ Error: Assignment must be in format 'key=value', got: {assignment}")
-                    return 1
-                key, value_str = assignment.split('=', 1)
-                value = parse_value(value_str)
-                item_dict[key] = value
-            
-            debug.log(f"  PATH: {path_parts}, POSITION: {position}, VALUE: {item_dict}")
-            
-            # Insert the item
-            insert_nested_value(config, path_parts, item_dict, position)
-            additions_made.append((base_path, position, item_dict))
+            key, value_str = assignment.split('=', 1)
+            value = parse_value(value_str)
+            item_dict[key] = value
+        
+        debug.log(f"  PATH: {path_parts}, POSITION: {position}, VALUE: {item_dict}")
+        
+        # Insert the item
+        insert_nested_value(config, path_parts, item_dict, position)
+        additions_made = [(base_path, position, item_dict)]
         
         # Validate all changes
         from schema import validate_config
@@ -863,8 +852,9 @@ Examples:
     del_parser.set_defaults(func=cmd_del)
     
     # Add command
-    add_parser = subparsers.add_parser('add', help='Add item(s) to list at specific position')
-    add_parser.add_argument('items', nargs='+', help='One or more items to add in format: "path.[N] key=value [key=value ...]" where [N] is position or [] for append (e.g., "firewall.input_rules.[0] comment=\\"Allow SSH\\" service=ssh action=accept" or "firewall.input_rules.[] comment=\\"Drop all\\" action=drop")')
+    add_parser = subparsers.add_parser('add', help='Add item to list at specific position')
+    add_parser.add_argument('path', help='Path with position: path.[N] where [N] is position or [] for append (e.g., firewall.input_rules.[0] or firewall.input_rules.[])')
+    add_parser.add_argument('assignments', nargs='+', help='One or more key=value pairs for the new item (e.g., comment="Allow SSH" service=ssh action=accept)')
     add_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
     add_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
     add_parser.set_defaults(func=cmd_add)
