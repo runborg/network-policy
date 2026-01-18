@@ -12,7 +12,7 @@ case "$1" in
         rm -f /var/log/network-policy-cfg-debug.log*
         
         # Remove cfg symlink
-        rm -f /usr/local/bin/cfg
+        rm -f /usr/bin/cfg
         
         # Reload systemd
         if [ -d /run/systemd/system ]; then
@@ -23,7 +23,7 @@ case "$1" in
     remove)
         # Keep configuration on remove (not purge)
         # Remove cfg symlink
-        rm -f /usr/local/bin/cfg
+        rm -f /usr/bin/cfg
         
         # Reload systemd
         if [ -d /run/systemd/system ]; then

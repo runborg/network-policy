@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Add library to path
-sys.path.insert(0, '/usr/local/lib/network-policy')
+sys.path.insert(0, '/usr/lib/network-policy')
 
 try:
     import toml

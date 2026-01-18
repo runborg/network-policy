@@ -25,8 +25,8 @@ case "$1" in
         fi
         
         # Create cfg symlink for convenience
-        if [ ! -e /usr/local/bin/cfg ]; then
-            ln -s /usr/local/bin/network-policy-cfg /usr/local/bin/cfg
+        if [ ! -e /usr/bin/cfg ]; then
+            ln -s /usr/bin/network-policy-cfg /usr/bin/cfg
         fi
         
         # Enable but don't start services (user must configure first)

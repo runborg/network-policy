@@ -9,7 +9,7 @@ import sys
 import argparse
 
 # Add library to path
-sys.path.insert(0, '/usr/local/lib/network-policy')
+sys.path.insert(0, '/usr/lib/network-policy')
 
 from config import load_config, ValidationError
 

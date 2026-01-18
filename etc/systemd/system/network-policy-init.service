@@ -7,7 +7,7 @@ Wants=network-pre.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/network-policy-init -c /data/network-policy.toml
+ExecStart=/usr/bin/network-policy-init -c /data/network-policy.toml
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal

@@ -1,18 +1,18 @@
 #!/usr/bin/make -f
 
 %:
-	dh $@ --with python3
+	dh $@
 
 override_dh_auto_install:
 	# Copy library files
-	install -d $(CURDIR)/debian/network-policy/usr/local/lib/network-policy
-	cp -r $(CURDIR)/usr/local/lib/network-policy/*.py \
-		$(CURDIR)/debian/network-policy/usr/local/lib/network-policy/
+	install -d $(CURDIR)/debian/network-policy/usr/lib/network-policy
+	cp -r $(CURDIR)/usr/lib/network-policy/*.py \
+		$(CURDIR)/debian/network-policy/usr/lib/network-policy/
 	
 	# Copy executables
-	install -d $(CURDIR)/debian/network-policy/usr/local/bin
-	install -m 0755 $(CURDIR)/usr/local/bin/network-policy-* \
-		$(CURDIR)/debian/network-policy/usr/local/bin/
+	install -d $(CURDIR)/debian/network-policy/usr/bin
+	install -m 0755 $(CURDIR)/usr/bin/network-policy-* \
+		$(CURDIR)/debian/network-policy/usr/bin/
 	
 	# Copy systemd services
 	install -d $(CURDIR)/debian/network-policy/etc/systemd/system
