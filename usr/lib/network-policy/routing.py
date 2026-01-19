@@ -13,7 +13,7 @@ Implements policy-based routing with:
 import subprocess
 from typing import Dict, Any, List, Set
 
-from .logger import get_logger
+from logger import get_logger
 
 logger = get_logger(__name__)
 

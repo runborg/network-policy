@@ -10,9 +10,9 @@ __author__ = "Network Policy Team"
 __license__ = "GPL-3.0"
 
 # Package exports
-from .logger import setup_logging, get_logger
-from .config import load_config, ValidationError
-from .schema import validate_config
+from logger import setup_logging, get_logger
+from config import load_config, ValidationError
+from schema import validate_config
 
 __all__ = [
     "__version__",

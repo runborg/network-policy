@@ -15,8 +15,8 @@ except ImportError:
     print("Install with: apt install python3-toml", file=sys.stderr)
     sys.exit(1)
 
-from .schema import validate_config, ValidationError
-from .logger import get_logger
+from schema import validate_config, ValidationError
+from logger import get_logger
 
 logger = get_logger(__name__)
 

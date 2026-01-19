@@ -22,10 +22,10 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
-from .logger import get_logger
-from .routing import get_interface_table_map
-from .dns import update_dns_for_default_route, get_default_interface
-from .config import load_config
+from logger import get_logger
+from routing import get_interface_table_map
+from dns import update_dns_for_default_route, get_default_interface
+from config import load_config
 
 logger = get_logger(__name__)
 

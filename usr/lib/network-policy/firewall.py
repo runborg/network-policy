@@ -16,8 +16,8 @@ import ipaddress
 from typing import Dict, Any, List, Set, Tuple
 from pathlib import Path
 
-from .logger import get_logger
-from .routing import get_interface_mark_map
+from logger import get_logger
+from routing import get_interface_mark_map
 
 logger = get_logger(__name__)
 
