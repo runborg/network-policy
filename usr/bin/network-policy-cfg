@@ -1,0 +1,931 @@
+#!/usr/bin/env python3
+"""
+network-policy-cfg - Configuration management tool
+
+Enhanced control tool with:
+- Configuration viewing and editing
+- System status and control
+- Debug logging of all operations
+"""
+
+import sys
+import json
+import socket
+import argparse
+import subprocess
+import os
+import re
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+# Add library to path
+sys.path.insert(0, '/usr/lib/network-policy')
+
+try:
+    import toml
+except ImportError:
+    print("Error: python3-toml not installed", file=sys.stderr)
+    sys.exit(1)
+
+from logger import setup_logging, get_logger
+from config import load_config, ValidationError
+from firewall import show_firewall_rules, reload_firewall
+
+DEFAULT_CONFIG = "/data/network-policy.toml"
+SOCKET_PATH = "/run/network-policy.sock"
+DEBUG_LOG = "/var/log/network-policy-cfg-debug.log"
+
+
+class DebugLogger:
+    """Debug logger that captures all commands and file operations."""
+    
+    def __init__(self, enabled: bool = False):
+        self.enabled = enabled
+        self.log_file = None
+        if enabled:
+            try:
+                self.log_file = open(DEBUG_LOG, 'a')
+                self.log(f"=== Debug session started ===")
+            except Exception as e:
+                print(f"Warning: Could not open debug log: {e}", file=sys.stderr)
+                self.enabled = False
+    
+    def log(self, message: str):
+        """Log a debug message."""
+        if self.enabled and self.log_file:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            self.log_file.write(f"[{timestamp}] {message}\n")
+            self.log_file.flush()
+    
+    def log_command(self, cmd: List[str], cwd: Optional[str] = None):
+        """Log a command before execution."""
+        if self.enabled:
+            self.log(f"COMMAND: {' '.join(cmd)}")
+            if cwd:
+                self.log(f"  CWD: {cwd}")
+    
+    def log_result(self, returncode: int, stdout: str, stderr: str):
+        """Log command result."""
+        if self.enabled:
+            self.log(f"  EXIT CODE: {returncode}")
+            if stdout:
+                self.log(f"  STDOUT: {stdout}")
+            if stderr:
+                self.log(f"  STDERR: {stderr}")
+    
+    def log_file_operation(self, operation: str, path: str, content: Optional[str] = None):
+        """Log file operation."""
+        if self.enabled:
+            self.log(f"FILE {operation}: {path}")
+            if content and len(content) < 500:
+                self.log(f"  CONTENT: {content}")
+            elif content:
+                self.log(f"  CONTENT: {len(content)} bytes")
+    
+    def close(self):
+        """Close debug log."""
+        if self.log_file:
+            self.log("=== Debug session ended ===\n")
+            self.log_file.close()
+
+
+# Global debug logger
+debug = DebugLogger()
+
+
+def send_command(command: dict) -> dict:
+    """Send command to health monitor daemon via control socket."""
+    try:
+        debug.log(f"SOCKET COMMAND: {json.dumps(command)}")
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(SOCKET_PATH)
+        sock.sendall(json.dumps(command).encode('utf-8'))
+        response_data = sock.recv(65536).decode('utf-8')
+        response = json.loads(response_data)
+        sock.close()
+        debug.log(f"  SOCKET RESPONSE: {json.dumps(response)}")
+        return response
+    except FileNotFoundError:
+        return {"error": "Health monitor daemon not running (socket not found)"}
+    except ConnectionRefusedError:
+        return {"error": "Health monitor daemon not responding"}
+    except Exception as e:
+        debug.log(f"  SOCKET ERROR: {e}")
+        return {"error": f"Communication error: {e}"}
+
+
+def parse_config_path(path: str) -> List[str]:
+    """
+    Parse configuration path into components.
+    
+    Supports both [N] and {N} for list indices:
+    - [N] requires quotes in bash (globbing)
+    - {N} does not require quotes in bash
+    
+    Examples:
+        "ethernet.eth0.method" -> ["ethernet", "eth0", "method"]
+        "firewall.input_rules.[0].action" -> ["firewall", "input_rules", "0", "action"]
+        "firewall.input_rules.{0}.action" -> ["firewall", "input_rules", "0", "action"]
+        "ntp_servers.[]" -> ["ntp_servers", "[]"]
+        "ntp_servers.{}" -> ["ntp_servers", "[]"]
+    """
+    # Handle array append notation with both [] and {}
+    parts = []
+    current = ""
+    in_brackets = False
+    bracket_type = None
+    
+    for char in path:
+        if char in '[{':
+            if current:
+                parts.append(current)
+                current = ""
+            in_brackets = True
+            bracket_type = char
+            current = "["  # Normalize both to [
+        elif char in ']}':
+            if in_brackets and ((char == ']' and bracket_type == '[') or (char == '}' and bracket_type == '{')):
+                current += "]"  # Normalize both to ]
+                parts.append(current)
+                current = ""
+                in_brackets = False
+                bracket_type = None
+            else:
+                current += char
+        elif char == '.' and not in_brackets:
+            if current:
+                parts.append(current)
+                current = ""
+        else:
+            current += char
+    
+    if current:
+        parts.append(current)
+    
+    return parts
+
+
+def get_nested_value(config: Dict, path: List[str]) -> Any:
+    """Get value from nested config dict."""
+    current = config
+    for part in path:
+        if isinstance(current, dict):
+            if part not in current:
+                raise KeyError(f"Path component '{part}' not found")
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                current = current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{part}': {e}")
+        else:
+            raise KeyError(f"Cannot traverse into non-dict/list at '{part}'")
+    return current
+
+
+def set_nested_value(config: Dict, path: List[str], value: Any) -> None:
+    """Set value in nested config dict."""
+    if not path:
+        raise ValueError("Empty path")
+    
+    current = config
+    for i, part in enumerate(path[:-1]):
+        if part == "[]":
+            raise ValueError("Cannot use [] in middle of path")
+        
+        if isinstance(current, dict):
+            if part not in current:
+                # Create intermediate dict or list
+                next_part = path[i + 1]
+                if next_part == "[]" or (next_part.isdigit()):
+                    current[part] = []
+                else:
+                    current[part] = {}
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                if index >= len(current):
+                    raise IndexError(f"List index {index} out of range")
+                current = current[index]
+            except ValueError:
+                raise KeyError(f"Invalid list index '{part}'")
+        else:
+            raise KeyError(f"Cannot traverse into non-dict/list at '{part}'")
+    
+    # Set the final value
+    last_part = path[-1]
+    if last_part == "[]":
+        # Append to list
+        if not isinstance(current, list):
+            raise ValueError(f"Cannot append to non-list")
+        current.append(value)
+    elif isinstance(current, dict):
+        current[last_part] = value
+    elif isinstance(current, list):
+        try:
+            index = int(last_part)
+            if index >= len(current):
+                raise IndexError(f"List index {index} out of range")
+            current[index] = value
+        except ValueError:
+            raise KeyError(f"Invalid list index '{last_part}'")
+    else:
+        raise KeyError(f"Cannot set value in non-dict/list")
+
+
+def insert_nested_value(config: Dict, path: List[str], value: Any, position: int = None) -> None:
+    """
+    Insert value into nested config list at specific position.
+    
+    Args:
+        config: Configuration dictionary
+        path: Path components to the list
+        value: Value to insert (typically a dict for array-of-tables)
+        position: Position to insert at (None or -1 for append, 0 for prepend, etc.)
+    """
+    if not path:
+        raise ValueError("Empty path")
+    
+    current = config
+    for part in path[:-1]:
+        if isinstance(current, dict):
+            if part not in current:
+                raise KeyError(f"Path component '{part}' not found")
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                current = current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{part}': {e}")
+        else:
+            raise KeyError(f"Cannot traverse into non-dict/list at '{part}'")
+    
+    # Insert into the final component
+    last_part = path[-1]
+    if isinstance(current, dict):
+        # Navigate to or create the list
+        if last_part not in current:
+            current[last_part] = []
+        target = current[last_part]
+        if not isinstance(target, list):
+            raise ValueError(f"Cannot insert into non-list at '{last_part}'")
+        
+        # Insert at position
+        if position is None or position == -1:
+            target.append(value)
+        else:
+            if position < 0 or position > len(target):
+                raise IndexError(f"Insert position {position} out of range (list has {len(target)} items)")
+            target.insert(position, value)
+    else:
+        raise KeyError(f"Parent is not a dict, cannot insert")
+
+
+def delete_nested_value(config: Dict, path: List[str], value: Any = None) -> None:
+    """
+    Delete value from nested config dict.
+    
+    Args:
+        config: Configuration dictionary
+        path: Path components to the value
+        value: If provided and target is a list, delete by matching this value instead of index
+    """
+    if not path:
+        raise ValueError("Empty path")
+    
+    current = config
+    for part in path[:-1]:
+        if isinstance(current, dict):
+            if part not in current:
+                raise KeyError(f"Path component '{part}' not found")
+            current = current[part]
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                current = current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{part}': {e}")
+        else:
+            raise KeyError(f"Cannot traverse into non-dict/list at '{part}'")
+    
+    # Delete the final component
+    last_part = path[-1]
+    if isinstance(current, dict):
+        if last_part not in current:
+            raise KeyError(f"Key '{last_part}' not found")
+        del current[last_part]
+    elif isinstance(current, list):
+        # Check if we should delete by value or by index
+        if value is not None and last_part == "[]":
+            # Delete by value
+            try:
+                current.remove(value)
+            except ValueError:
+                raise KeyError(f"Value {json.dumps(value)} not found in list")
+        else:
+            # Delete by index
+            try:
+                index = int(last_part)
+                del current[index]
+            except (ValueError, IndexError) as e:
+                raise KeyError(f"Invalid list index '{last_part}': {e}")
+    else:
+        raise KeyError(f"Cannot delete from non-dict/list")
+
+
+def parse_value(value_str: str) -> Any:
+    """Parse value string into appropriate Python type."""
+    # Try to parse as JSON first (handles strings, numbers, booleans, lists, dicts)
+    try:
+        return json.loads(value_str)
+    except json.JSONDecodeError:
+        # If JSON parsing fails, treat as plain string
+        return value_str
+
+
+def config_to_commands(config: Dict, prefix: str = "") -> List[str]:
+    """Convert config dict to list of cfg set commands."""
+    commands = []
+    
+    for key, value in config.items():
+        path = f"{prefix}.{key}" if prefix else key
+        
+        if isinstance(value, dict):
+            # Recurse into dict
+            commands.extend(config_to_commands(value, path))
+        elif isinstance(value, list):
+            # Handle lists
+            for item in value:
+                if isinstance(item, dict):
+                    # Array of tables (TOML)
+                    commands.extend(config_to_commands(item, path + ".[]"))
+                else:
+                    # Simple list items
+                    commands.append(f"cfg set {path}.[]={json.dumps(item)}")
+        else:
+            # Simple value
+            commands.append(f"cfg set {path}={json.dumps(value)}")
+    
+    return commands
+
+
+def cmd_get(args):
+    """Get configuration value."""
+    try:
+        debug.log(f"CMD GET: path={args.path}, config={args.config}")
+        
+        # Load config
+        config = load_config(args.config)
+        
+        # Parse path
+        path_parts = parse_config_path(args.path)
+        
+        # Get value
+        value = get_nested_value(config, path_parts)
+        
+        # Print value
+        if isinstance(value, (dict, list)):
+            print(json.dumps(value, indent=2))
+        else:
+            print(json.dumps(value))
+        
+        return 0
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_set(args):
+    """Set configuration value(s)."""
+    try:
+        debug.log(f"CMD SET: assignments={args.assignments}, config={args.config}")
+        
+        # Load existing config once
+        config_path = Path(args.config)
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = toml.load(f)
+                debug.log_file_operation("READ", str(config_path))
+        else:
+            config = {}
+            debug.log(f"  Config file does not exist, creating new")
+        
+        # Process each assignment
+        changes_made = []
+        for assignment in args.assignments:
+            # Parse assignment
+            if '=' not in assignment:
+                print(f"✗ Error: Assignment must be in format 'path=value', got: {assignment}")
+                return 1
+            
+            path_str, value_str = assignment.split('=', 1)
+            path_parts = parse_config_path(path_str)
+            value = parse_value(value_str)
+            
+            debug.log(f"  PATH: {path_parts}, VALUE: {value}")
+            
+            # Set value
+            set_nested_value(config, path_parts, value)
+            changes_made.append((path_str, value))
+        
+        # Validate all changes
+        from schema import validate_config
+        validate_config(config)
+        debug.log("  VALIDATION: passed")
+        
+        # Save config
+        with open(config_path, 'w') as f:
+            toml.dump(config, f)
+        debug.log_file_operation("WRITE", str(config_path))
+        
+        # Report changes
+        for path_str, value in changes_made:
+            print(f"✓ Set {path_str} = {json.dumps(value)}")
+        print(f"✓ Configuration saved to {config_path}")
+        
+        if args.apply:
+            print("\nApplying configuration changes...")
+            # Trigger reload
+            result = subprocess.run(
+                ["network-policy-cfg", "reload", "-c", str(config_path)],
+                capture_output=True,
+                text=True
+            )
+            debug.log_command(["network-policy-cfg", "reload", "-c", str(config_path)])
+            debug.log_result(result.returncode, result.stdout, result.stderr)
+            
+            if result.returncode != 0:
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
+        
+        return 0
+    except ValidationError as e:
+        print(f"✗ Validation error: {e}")
+        debug.log(f"  VALIDATION ERROR: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_del(args):
+    """Delete configuration value(s)."""
+    try:
+        debug.log(f"CMD DEL: paths={args.paths}, config={args.config}")
+        
+        # Load existing config
+        config_path = Path(args.config)
+        if not config_path.exists():
+            print(f"✗ Error: Configuration file {config_path} does not exist")
+            return 1
+        
+        with open(config_path, 'r') as f:
+            config = toml.load(f)
+            debug.log_file_operation("READ", str(config_path))
+        
+        # Process each deletion
+        deletions_made = []
+        for path_arg in args.paths:
+            # Check if this is a value-based list deletion (path.[]=value)
+            value_to_delete = None
+            if '=' in path_arg:
+                path_str, value_str = path_arg.split('=', 1)
+                value_to_delete = parse_value(value_str)
+            else:
+                path_str = path_arg
+            
+            path_parts = parse_config_path(path_str)
+            
+            # Delete value
+            delete_nested_value(config, path_parts, value_to_delete)
+            
+            if value_to_delete is not None:
+                deletions_made.append(f"{path_str}={json.dumps(value_to_delete)}")
+            else:
+                deletions_made.append(path_str)
+        
+        # Validate
+        from schema import validate_config
+        validate_config(config)
+        debug.log("  VALIDATION: passed")
+        
+        # Save config
+        with open(config_path, 'w') as f:
+            toml.dump(config, f)
+        debug.log_file_operation("WRITE", str(config_path))
+        
+        # Report deletions
+        for deletion in deletions_made:
+            print(f"✓ Deleted {deletion}")
+        print(f"✓ Configuration saved to {config_path}")
+        
+        if args.apply:
+            print("\nApplying configuration changes...")
+            result = subprocess.run(
+                ["network-policy-cfg", "reload", "-c", str(config_path)],
+                capture_output=True,
+                text=True
+            )
+            debug.log_command(["network-policy-cfg", "reload", "-c", str(config_path)])
+            debug.log_result(result.returncode, result.stdout, result.stderr)
+            
+            if result.returncode != 0:
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
+        
+        return 0
+    except ValidationError as e:
+        print(f"✗ Validation error: {e}")
+        debug.log(f"  VALIDATION ERROR: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_add(args):
+    """Add item(s) to list at specific position."""
+    try:
+        debug.log(f"CMD ADD: path={args.path}, assignments={args.assignments}, config={args.config}")
+        
+        # Load existing config
+        config_path = Path(args.config)
+        if config_path.exists():
+            with open(config_path, 'r') as f:
+                config = toml.load(f)
+                debug.log_file_operation("READ", str(config_path))
+        else:
+            config = {}
+            debug.log(f"  Config file does not exist, creating new")
+        
+        # Parse the path - extract position from path
+        # Format: firewall.input_rules.{0} or firewall.input_rules.{} (append)
+        # Also supports: firewall.input_rules.[0] or firewall.input_rules.[] (append)
+        path_str = args.path
+        if path_str.endswith('.[]') or path_str.endswith('.{}'):
+            # Append to end
+            base_path = path_str[:-3]
+            position = -1
+        elif ('.[' in path_str and path_str.endswith(']')) or ('.{' in path_str and path_str.endswith('}')):
+            # Position specified in path
+            if '.[' in path_str:
+                base_path = path_str[:path_str.rfind('.[')]
+                pos_str = path_str[path_str.rfind('.[') + 2:-1]
+            else:
+                base_path = path_str[:path_str.rfind('.{')]
+                pos_str = path_str[path_str.rfind('.{') + 2:-1]
+            try:
+                position = int(pos_str)
+            except ValueError:
+                print(f"✗ Error: Invalid position in path: {path_str}")
+                return 1
+        else:
+            # No position in path - error, must specify position
+            print(f"✗ Error: Path must include position .{{N}} or .{{}} for append, got: {path_str}")
+            print(f"  Examples: firewall.input_rules.{{0}}, firewall.input_rules.{{}}")
+            print(f"  Or with quotes: 'firewall.input_rules.[0]', 'firewall.input_rules.[]'")
+            return 1
+        
+        path_parts = parse_config_path(base_path)
+        
+        # Parse the key=value pairs into a dict
+        item_dict = {}
+        for assignment in args.assignments:
+            if '=' not in assignment:
+                print(f"✗ Error: Assignment must be in format 'key=value', got: {assignment}")
+                return 1
+            key, value_str = assignment.split('=', 1)
+            value = parse_value(value_str)
+            item_dict[key] = value
+        
+        debug.log(f"  PATH: {path_parts}, POSITION: {position}, VALUE: {item_dict}")
+        
+        # Insert the item
+        insert_nested_value(config, path_parts, item_dict, position)
+        additions_made = [(base_path, position, item_dict)]
+        
+        # Validate all changes
+        from schema import validate_config
+        validate_config(config)
+        debug.log("  VALIDATION: passed")
+        
+        # Save config
+        with open(config_path, 'w') as f:
+            toml.dump(config, f)
+        debug.log_file_operation("WRITE", str(config_path))
+        
+        # Report additions
+        for base_path, position, item_dict in additions_made:
+            pos_desc = "end" if position == -1 else f"position {position}"
+            print(f"✓ Added to {base_path} at {pos_desc}: {json.dumps(item_dict)}")
+        print(f"✓ Configuration saved to {config_path}")
+        
+        if args.apply:
+            print("\nApplying configuration changes...")
+            result = subprocess.run(
+                ["network-policy-cfg", "reload", "-c", str(config_path)],
+                capture_output=True,
+                text=True
+            )
+            debug.log_command(["network-policy-cfg", "reload", "-c", str(config_path)])
+            debug.log_result(result.returncode, result.stdout, result.stderr)
+            
+            if result.returncode != 0:
+                print(f"⚠ Apply failed: {result.stderr}")
+                return 1
+            print("✓ Configuration applied successfully")
+        else:
+            print("\nNote: Changes saved but not applied. Run 'cfg reload' to apply.")
+        
+        return 0
+    except ValidationError as e:
+        print(f"✗ Validation error: {e}")
+        debug.log(f"  VALIDATION ERROR: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_export(args):
+    """Export configuration as cfg commands."""
+    try:
+        debug.log(f"CMD EXPORT: config={args.config}")
+        
+        # Load config
+        config = load_config(args.config)
+        
+        # Convert to commands
+        commands = config_to_commands(config)
+        
+        # Print commands
+        for cmd in sorted(commands):
+            print(cmd)
+        
+        return 0
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_reload(args):
+    """Reload configuration."""
+    logger = get_logger(__name__)
+    debug.log(f"CMD RELOAD: config={args.config}")
+    
+    print("Reloading network policy configuration...")
+    
+    try:
+        # Validate configuration first
+        print(f"Validating configuration: {args.config}")
+        config = load_config(args.config)
+        print("✓ Configuration valid")
+        
+        # Reload firewall
+        print("Reloading firewall...")
+        reload_firewall(config)
+        print("✓ Firewall reloaded")
+        
+        # Tell health monitor to reload
+        print("Reloading health monitor...")
+        response = send_command({
+            "action": "reload",
+            "config_path": args.config
+        })
+        
+        if "error" in response:
+            print(f"⚠ Health monitor: {response['error']}")
+        elif response.get("success"):
+            print("✓ Health monitor reloaded")
+        else:
+            print(f"⚠ Health monitor: {response}")
+        
+        print("\n✓ Configuration reloaded successfully")
+        return 0
+        
+    except ValidationError as e:
+        print(f"✗ Configuration validation error: {e}")
+        debug.log(f"  VALIDATION ERROR: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Reload failed: {e}")
+        logger.error(f"Reload failed: {e}", exc_info=True)
+        debug.log(f"  ERROR: {e}")
+        return 1
+
+
+def cmd_status(args):
+    """Show system status."""
+    debug.log("CMD STATUS")
+    print("Network Policy Status")
+    print("=" * 60)
+    
+    # Get health monitor status
+    response = send_command({"action": "status"})
+    
+    if "error" in response:
+        print(f"\nHealth Monitor: {response['error']}")
+    else:
+        print("\nHealth Monitor: Running")
+        print(f"  Interval: {response['interval']}s")
+        print(f"  Timeout: {response['timeout']}s")
+        print(f"  Probe targets: {', '.join(response['probe_targets'])}")
+        print("\nInterface Status:")
+        
+        for iface_name, state in response['interfaces'].items():
+            status = "UP" if state['active'] else "DOWN"
+            print(f"  {iface_name}:")
+            print(f"    Status: {status}")
+            print(f"    Priority: {state['priority']}")
+            print(f"    Table: {state['table']}")
+            print(f"    IP: {state.get('ip', 'N/A')}")
+            print(f"    Gateway: {state.get('gateway', 'N/A')}")
+            print(f"    Failures: {state['failures']}")
+            print(f"    Successes: {state['successes']}")
+            if state.get('last_success'):
+                import datetime
+                last_success = datetime.datetime.fromtimestamp(state['last_success'])
+                print(f"    Last success: {last_success}")
+    
+    print("\n" + "=" * 60)
+    return 0
+
+
+def cmd_firewall(args):
+    """Show firewall rules."""
+    debug.log("CMD FIREWALL")
+    print("Network Policy Firewall Rules")
+    print("=" * 60)
+    print()
+    
+    rules = show_firewall_rules()
+    print(rules)
+    
+    return 0
+
+
+def main():
+    """Main control function."""
+    global debug
+    
+    parser = argparse.ArgumentParser(
+        description="Network Policy Configuration Management Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # View configuration value
+  cfg get ethernet.eth0.method
+  
+  # Set single value (does not auto-apply)
+  cfg set ethernet.eth0.method=dhcp
+  
+  # Set multiple values at once
+  cfg set ethernet.eth0.method=static ethernet.eth0.ipv4_address="192.168.1.100/24" ethernet.eth0.ipv4_gateway="192.168.1.1"
+  
+  # Set with quotes for strings
+  cfg set system.hostname="my-gateway"
+  
+  # Add to list (append) - use {} to avoid bash quoting, or [] with quotes
+  cfg set system.ntp_servers.{}="1.2.3.4"
+  cfg set system.ntp_servers.[]="1.2.3.4"
+  
+  # Add firewall rule at specific position (insert at position 0)
+  # Use {N} notation (no quotes needed in bash) or [N] (requires quotes)
+  cfg add firewall.input_rules.{0} comment="Allow SSH" service=ssh action=accept
+  cfg add 'firewall.input_rules.[0]' comment="Allow SSH" service=ssh action=accept
+  
+  # Add firewall rule at end (append)
+  cfg add firewall.input_rules.{} comment="Drop all" action=drop
+  cfg add 'firewall.input_rules.[]' comment="Drop all" action=drop
+  
+  # Modify existing value (change element 0)
+  cfg set firewall.input_rules.{0}.action=drop
+  cfg set 'firewall.input_rules.[0].action'=drop
+  
+  # Delete single configuration
+  cfg del ethernet.eth1
+  
+  # Delete multiple configurations at once
+  cfg del ethernet.eth1 wifi.wlan0
+  
+  # Delete specific list item by index
+  cfg del system.ntp_servers.{0}
+  cfg del 'system.ntp_servers.[0]'
+  
+  # Delete firewall rule at position 2
+  cfg del firewall.input_rules.{2}
+  
+  # Delete list item by value
+  cfg del system.ntp_servers.{}="1.2.3.4"
+  
+  # Set and immediately apply
+  cfg set ethernet.eth0.enabled=true --apply
+  
+  # After making changes, validate and apply
+  cfg reload
+  
+  # Export config as commands
+  cfg export > config-backup.sh
+  
+  # Show status
+  cfg status
+
+Note: List indices support both {N} and [N] notation:
+  - {N} or {} - No quotes needed in bash (recommended)
+  - [N] or [] - Requires quotes in bash (e.g., '[0]' or "[]")
+"""
+    )
+    
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=f"Enable debug logging to {DEBUG_LOG}"
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Get command
+    get_parser = subparsers.add_parser('get', help='Get configuration value')
+    get_parser.add_argument('path', help='Configuration path (e.g., ethernet.eth0.method)')
+    get_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    get_parser.set_defaults(func=cmd_get)
+    
+    # Set command
+    set_parser = subparsers.add_parser('set', help='Set configuration value(s)')
+    set_parser.add_argument('assignments', nargs='+', help='One or more assignments in format path=value')
+    set_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    set_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
+    set_parser.set_defaults(func=cmd_set)
+    
+    # Delete command
+    del_parser = subparsers.add_parser('del', help='Delete configuration value(s)')
+    del_parser.add_argument('paths', nargs='+', help='One or more paths to delete (supports list indices like ntp_servers.{1} or ntp_servers.[1] with quotes, or value matching like ntp_servers.{}="1.2.3.4")')
+    del_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    del_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
+    del_parser.set_defaults(func=cmd_del)
+    
+    # Add command
+    add_parser = subparsers.add_parser('add', help='Add item to list at specific position')
+    add_parser.add_argument('path', help='Path with position: path.{N} or path.[N] where N is position or empty for append (e.g., firewall.input_rules.{0} or firewall.input_rules.{})')
+    add_parser.add_argument('assignments', nargs='+', help='One or more key=value pairs for the new item (e.g., comment="Allow SSH" service=ssh action=accept)')
+    add_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    add_parser.add_argument('--apply', action='store_true', help='Apply changes immediately (reload services)')
+    add_parser.set_defaults(func=cmd_add)
+    
+    # Export command
+    export_parser = subparsers.add_parser('export', help='Export config as cfg commands')
+    export_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    export_parser.set_defaults(func=cmd_export)
+    
+    # Reload command
+    reload_parser = subparsers.add_parser('reload', help='Reload configuration')
+    reload_parser.add_argument('-c', '--config', default=DEFAULT_CONFIG, help='Config file')
+    reload_parser.set_defaults(func=cmd_reload)
+    
+    # Status command
+    status_parser = subparsers.add_parser('status', help='Show system status')
+    status_parser.set_defaults(func=cmd_status)
+    
+    # Firewall command
+    firewall_parser = subparsers.add_parser('firewall', help='Show firewall rules')
+    firewall_parser.set_defaults(func=cmd_firewall)
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return 1
+    
+    # Enable debug logging if requested
+    if args.debug:
+        debug = DebugLogger(enabled=True)
+        print(f"Debug logging enabled: {DEBUG_LOG}")
+    
+    # Setup minimal logging
+    setup_logging(log_path=None, log_level="ERROR", console=False)
+    
+    try:
+        # Execute command
+        result = args.func(args)
+        return result
+    finally:
+        debug.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

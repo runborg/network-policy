@@ -1,0 +1,4 @@
+usr/lib/network-policy/*.py usr/lib/network-policy/
+usr/bin/network-policy-* usr/bin/
+etc/systemd/system/*.service etc/systemd/system/
+usr/share/doc/network-policy/* usr/share/doc/network-policy/

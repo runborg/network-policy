@@ -1,0 +1,39 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	# Copy library files
+	install -d $(CURDIR)/debian/network-policy/usr/lib/network-policy
+	cp -r $(CURDIR)/usr/lib/network-policy/*.py \
+		$(CURDIR)/debian/network-policy/usr/lib/network-policy/
+	
+	# Copy executables
+	install -d $(CURDIR)/debian/network-policy/usr/bin
+	install -m 0755 $(CURDIR)/usr/bin/network-policy-* \
+		$(CURDIR)/debian/network-policy/usr/bin/
+	
+	# Copy systemd services
+	install -d $(CURDIR)/debian/network-policy/etc/systemd/system
+	install -m 0644 $(CURDIR)/etc/systemd/system/*.service \
+		$(CURDIR)/debian/network-policy/etc/systemd/system/
+	
+	# Copy documentation
+	install -d $(CURDIR)/debian/network-policy/usr/share/doc/network-policy
+	cp -r $(CURDIR)/usr/share/doc/network-policy/* \
+		$(CURDIR)/debian/network-policy/usr/share/doc/network-policy/
+	
+	# Copy additional documentation if exists
+	[ -d $(CURDIR)/docs ] && \
+		cp -r $(CURDIR)/docs/* \
+		$(CURDIR)/debian/network-policy/usr/share/doc/network-policy/ || true
+
+override_dh_auto_clean:
+	dh_auto_clean
+	rm -rf $(CURDIR)/debian/network-policy
+
+override_dh_auto_test:
+	# Skip tests for now
+
+.PHONY: override_dh_auto_install override_dh_auto_clean override_dh_auto_test

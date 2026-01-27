@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""
+network-policy-healthcheck - Health monitoring daemon
+
+Long-running daemon that monitors interface health and performs
+automatic failover by managing routing rules.
+"""
+
+import sys
+import signal
+import argparse
+from pathlib import Path
+
+# Add library to path
+sys.path.insert(0, '/usr/lib/network-policy')
+
+from logger import setup_logging, get_logger
+from config import load_config, ValidationError
+from healthcheck import HealthMonitor
+
+DEFAULT_CONFIG = "/data/network-policy.toml"
+
+# Global monitor instance for signal handling
+monitor = None
+
+
+def signal_handler(signum, frame):
+    """Handle shutdown signals."""
+    logger = get_logger(__name__)
+    logger.info(f"Received signal {signum}, shutting down...")
+    if monitor:
+        monitor.stop()
+    sys.exit(0)
+
+
+def main():
+    """Main daemon function."""
+    global monitor
+    
+    parser = argparse.ArgumentParser(
+        description="Network Policy Health Monitoring Daemon"
+    )
+    parser.add_argument(
+        "-c", "--config",
+        default=DEFAULT_CONFIG,
+        help=f"Configuration file path (default: {DEFAULT_CONFIG})"
+    )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Enable verbose logging"
+    )
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    log_level = "DEBUG" if args.verbose else "INFO"
+    setup_logging(log_path="/var/log/network-policy-healthcheck.log", log_level=log_level)
+    logger = get_logger(__name__)
+    
+    # Setup signal handlers
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+    
+    try:
+        logger.info("=" * 60)
+        logger.info("Network Policy Health Monitor Starting")
+        logger.info("=" * 60)
+        
+        # Load configuration
+        logger.info(f"Loading configuration from {args.config}")
+        config = load_config(args.config)
+        logger.info("Configuration validated successfully")
+        
+        # Check if healthcheck is enabled
+        if "healthcheck" not in config:
+            logger.warning("No healthcheck configuration found, using defaults")
+        
+        # Create and start health monitor
+        monitor = HealthMonitor(config)
+        logger.info("Health monitor initialized")
+        
+        # Start monitoring (blocking)
+        monitor.start()
+        
+    except ValidationError as e:
+        logger.error(f"Configuration validation error: {e}")
+        return 1
+    except FileNotFoundError as e:
+        logger.error(f"Configuration file not found: {e}")
+        return 1
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        if monitor:
+            monitor.stop()
+        return 0
+    except Exception as e:
+        logger.error(f"Health monitor failed: {e}", exc_info=True)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

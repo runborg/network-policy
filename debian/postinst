@@ -1,0 +1,58 @@
+#!/bin/bash
+set -e
+
+case "$1" in
+    configure)
+        # Create /data directory if it doesn't exist
+        if [ ! -d /data ]; then
+            mkdir -p /data
+            chmod 755 /data
+        fi
+        
+        # Install example config if no config exists
+        if [ ! -f /data/network-policy.toml ]; then
+            if [ -f /usr/share/doc/network-policy/example-config.toml ]; then
+                cp /usr/share/doc/network-policy/example-config.toml /data/network-policy.toml
+                chmod 644 /data/network-policy.toml
+                echo "Installed example configuration to /data/network-policy.toml"
+                echo "IMPORTANT: Edit /data/network-policy.toml before enabling services!"
+            fi
+        fi
+        
+        # Reload systemd daemon
+        if [ -d /run/systemd/system ]; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        fi
+        
+        # Create cfg symlink for convenience
+        if [ ! -e /usr/bin/cfg ]; then
+            ln -s /usr/bin/network-policy-cfg /usr/bin/cfg
+        fi
+        
+        # Enable but don't start services (user must configure first)
+        if [ -d /run/systemd/system ]; then
+            systemctl enable network-policy-init.service >/dev/null 2>&1 || true
+            systemctl enable network-policy-healthcheck.service >/dev/null 2>&1 || true
+            echo ""
+            echo "Network Policy installed successfully!"
+            echo ""
+            echo "Quick command reference:"
+            echo "  cfg status              - Show system status"
+            echo "  cfg get PATH            - Get config value"
+            echo "  cfg set PATH=VALUE      - Set config value"
+            echo "  cfg del PATH            - Delete config value"
+            echo "  cfg reload              - Reload configuration"
+            echo "  cfg --debug COMMAND     - Enable debug logging"
+            echo ""
+            echo "Next steps:"
+            echo "1. Edit /data/network-policy.toml for your system"
+            echo "2. Validate: network-policy-validate /data/network-policy.toml"
+            echo "3. Start services:"
+            echo "   systemctl start network-policy-init.service"
+            echo "   systemctl start network-policy-healthcheck.service"
+            echo ""
+        fi
+        ;;
+esac
+
+exit 0

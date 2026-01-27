@@ -1,0 +1,31 @@
+Source: network-policy
+Section: net
+Priority: optional
+Maintainer: Network Policy Team <network-policy@example.com>
+Build-Depends: debhelper-compat (= 13), python3 (>= 3.7), python3-toml
+Standards-Version: 4.6.0
+Homepage: https://github.com/runborg/network-policy
+
+Package: network-policy
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.7),
+         python3-toml,
+         network-manager,
+         modemmanager,
+         iproute2,
+         nftables,
+         systemd,
+         iputils-ping
+Description: Advanced network policy management for embedded Linux
+ Network Policy provides comprehensive network management for embedded
+ systems with multiple interfaces (Ethernet, WiFi, LTE, WireGuard).
+ .
+ Features include:
+  * Integrated stateful firewall with nftables
+  * Health monitoring with automatic failover
+  * Policy-based routing with per-interface tables
+  * Runtime-reloadable TOML configuration
+  * NetworkManager profile management
+  * DNS failover following default route
+  * System settings and user management

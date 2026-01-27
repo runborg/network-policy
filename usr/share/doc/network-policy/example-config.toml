@@ -1,0 +1,400 @@
+# Network Policy Configuration Example
+# Complete configuration demonstrating all available options
+
+# =============================================================================
+# SYSTEM SETTINGS
+# =============================================================================
+[system]
+# System hostname
+hostname = "edge-gateway"
+
+# Timezone (e.g., "Europe/Copenhagen", "America/New_York", "UTC")
+timezone = "Europe/Copenhagen"
+
+# NTP servers for time synchronization
+ntp_servers = [
+    "0.pool.ntp.org",
+    "1.pool.ntp.org",
+    "2.pool.ntp.org"
+]
+
+# System locale (e.g., "en_US.UTF-8", "da_DK.UTF-8")
+locale = "en_US.UTF-8"
+
+
+# =============================================================================
+# USER ACCOUNTS
+# =============================================================================
+# Create or update user accounts with SSH access
+# Generate password hash with: mkpasswd -m sha-512
+
+[users.admin]
+# Password hash (use mkpasswd -m sha-512)
+password_hash = "$6$rounds=656000$YourSaltHere$YourHashHere"
+
+# User groups (common: wheel, sudo, adm, systemd-journal)
+groups = ["wheel", "sudo", "adm"]
+
+# Shell
+shell = "/bin/bash"
+
+# SSH public keys for passwordless authentication
+ssh_keys = [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKey1 admin@workstation",
+    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQExampleKey2 admin@laptop"
+]
+
+
+# =============================================================================
+# ETHERNET INTERFACES
+# =============================================================================
+# Configure Ethernet interfaces with static or DHCP addressing
+# Supports both IPv4 and IPv6
+
+[ethernet.eth0]
+enabled = true
+priority = 10  # Lower number = higher priority (0-1000)
+
+# IPv4 Configuration
+method = "dhcp"  # "dhcp", "static", or "auto"
+
+# Uncomment for static IPv4 configuration (single address):
+# method = "static"
+# ipv4_address = "192.168.1.100/24"
+# ipv4_gateway = "192.168.1.1"
+# ipv4_dns = ["8.8.8.8", "1.1.1.1"]
+
+# Uncomment for static IPv4 with multiple addresses:
+# method = "static"
+# ipv4_addresses = ["192.168.1.100/24", "192.168.1.101/24"]
+# ipv4_gateway = "192.168.1.1"
+# ipv4_dns = ["8.8.8.8", "1.1.1.1"]
+
+# IPv6 Configuration
+ipv6_method = "auto"  # "auto" (SLAAC/ND), "dhcp" (DHCPv6), "static", or "disabled"
+
+# Uncomment for static IPv6 configuration (single address):
+# ipv6_method = "static"
+# ipv6_address = "2001:db8::100/64"
+# ipv6_gateway = "2001:db8::1"
+# ipv6_dns = ["2001:4860:4860::8888", "2001:4860:4860::8844"]
+
+# Uncomment for static IPv6 with multiple addresses:
+# ipv6_method = "static"
+# ipv6_addresses = ["2001:db8::100/64", "2001:db8::101/64"]
+# ipv6_gateway = "2001:db8::1"
+# ipv6_dns = ["2001:4860:4860::8888"]
+
+# Optional: MTU setting
+# mtu = 1500
+
+[ethernet.eth1]
+enabled = true
+priority = 15
+
+# Example: Static IPv4 and IPv6 (dual-stack)
+method = "static"
+ipv4_addresses = ["10.0.1.100/24", "10.0.1.101/24"]
+gateway = "10.0.1.1"
+dns = ["10.0.1.1"]
+
+ipv6_method = "static"
+ipv6_addresses = ["fd00::100/64", "fd00::101/64"]
+ipv6_gateway = "fd00::1"
+ipv6_dns = ["fd00::1"]
+
+
+# =============================================================================
+# WIFI INTERFACES
+# =============================================================================
+# Configure WiFi interfaces with WPA-PSK authentication
+# Supports both IPv4 and IPv6
+
+[wifi.wlan0]
+enabled = true
+priority = 20
+ssid = "MyNetwork"
+psk = "SecurePassword123"  # 8-63 characters
+
+# IPv4 Configuration
+method = "dhcp"
+
+# Uncomment for static IPv4 configuration:
+# method = "static"
+# ipv4_address = "192.168.2.100/24"
+# ipv4_gateway = "192.168.2.1"
+# ipv4_dns = ["192.168.2.1"]
+
+# Uncomment for multiple static IPv4 addresses:
+# method = "static"
+# ipv4_addresses = ["192.168.2.100/24", "192.168.2.101/24"]
+# ipv4_gateway = "192.168.2.1"
+# ipv4_dns = ["192.168.2.1"]
+
+# IPv6 Configuration
+ipv6_method = "auto"  # "auto" (SLAAC/ND), "dhcp" (DHCPv6), "static", or "disabled"
+
+# Uncomment for static IPv6:
+# ipv6_method = "static"
+# ipv6_addresses = ["2001:db8:wifi::100/64"]
+# ipv6_gateway = "2001:db8:wifi::1"
+# ipv6_dns = ["2001:db8:wifi::1"]
+
+
+# =============================================================================
+# LTE/CELLULAR INTERFACES
+# =============================================================================
+# Configure LTE modems via ModemManager
+
+[lte.wwan0]
+enabled = true
+priority = 30
+device = "eg25-g"  # "eg25-g", "mc7455", "mc7354", or "generic"
+apn = "internet"
+
+# Optional authentication (if required by carrier)
+# user = "username"
+# password = "password"
+
+# Optional SIM PIN (4-8 digits)
+# pin = "1234"
+
+
+# =============================================================================
+# WIREGUARD VPN INTERFACES
+# =============================================================================
+# Configure WireGuard VPN tunnels
+# Generate keys with: wg genkey | tee privatekey | wg pubkey > publickey
+
+[wireguard.wg0]
+enabled = true
+
+# WireGuard private key (base64, 44 characters)
+private_key = "YourPrivateKeyHere="
+
+# VPN IP address with CIDR
+ipv4_address = "10.200.100.2/24"
+
+# Optional: Listen port for incoming connections
+# listen_port = 51820
+
+# Optional: DNS servers to use when VPN is active
+# ipv4_dns = ["10.200.100.1"]
+
+# Peer configuration
+peer_public_key = "PeerPublicKeyHere="
+peer_endpoint = "vpn.example.com:51820"
+peer_allowed_ips = ["0.0.0.0/0"]  # Route all traffic through VPN
+
+# Optional: Pre-shared key for additional security
+# peer_preshared_key = "YourPSKHere="
+
+# Optional: Persistent keepalive (seconds, 0 to disable)
+# peer_keepalive = 25
+
+
+# =============================================================================
+# FIREWALL CONFIGURATION
+# =============================================================================
+[firewall]
+enabled = true
+
+# Default policy for incoming traffic: "drop" or "accept"
+default_input_policy = "drop"
+
+# Allow established/related connections (recommended)
+allow_established = true
+
+# Allow loopback traffic (recommended)
+allow_loopback = true
+
+# -----------------------------------------------------------------------------
+# Address Groups
+# -----------------------------------------------------------------------------
+# Define reusable sets of IP addresses/networks
+# Address groups support both IPv4 and IPv6 addresses mixed together
+
+[firewall.address_groups.trusted]
+description = "Trusted admin networks (IPv4 and IPv6)"
+addresses = [
+    "192.168.1.0/24",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "2001:db8::/32",
+    "fd00::/8"
+]
+
+[firewall.address_groups.vpn_clients]
+description = "VPN client network"
+addresses = ["10.200.100.0/24", "fd00:100::/64"]
+
+[firewall.address_groups.internal]
+description = "Internal networks (IPv4 and IPv6)"
+addresses = [
+    "10.0.1.0/24",
+    "192.168.0.0/16",
+    "2001:db8:1000::/48"
+]
+
+# -----------------------------------------------------------------------------
+# Services
+# -----------------------------------------------------------------------------
+# Define reusable service definitions with protocol and ports
+
+[firewall.services.ssh]
+protocol = "tcp"
+ports = [22]
+
+[firewall.services.web]
+protocol = "tcp"
+ports = [80, 443]
+
+[firewall.services.dns]
+protocol = "udp"
+ports = [53]
+
+[firewall.services.ntp]
+protocol = "udp"
+ports = [123]
+
+[firewall.services.custom_app]
+protocol = "tcp"
+ports = [8080, 8443, 9090]
+
+# -----------------------------------------------------------------------------
+# Input Rules
+# -----------------------------------------------------------------------------
+# Define firewall rules for incoming traffic
+# Rules are evaluated in order from top to bottom
+
+[[firewall.input_rules]]
+comment = "Allow SSH from trusted networks or VPN"
+source_groups = ["trusted", "vpn_clients"]  # OR logic for multiple groups
+service = "ssh"
+action = "accept"
+
+[[firewall.input_rules]]
+comment = "Allow web traffic from anywhere"
+service = "web"
+action = "accept"
+
+[[firewall.input_rules]]
+comment = "Allow DNS from internal networks"
+source_groups = ["internal"]
+service = "dns"
+action = "accept"
+
+[[firewall.input_rules]]
+comment = "Allow custom application from trusted networks"
+source_groups = ["trusted"]
+service = "custom_app"
+action = "accept"
+
+[[firewall.input_rules]]
+comment = "Log and reject everything else"
+action = "reject"
+log = true
+log_prefix = "FW-REJECT: "
+
+
+# =============================================================================
+# HEALTH MONITORING
+# =============================================================================
+# Automatic interface failover based on health checks
+
+[healthcheck]
+# Interval between health checks (seconds)
+interval_sec = 30
+
+# Timeout for each ping attempt (seconds)
+timeout_sec = 5
+
+# Targets to probe (will try all, needs at least one to succeed)
+probe_targets = [
+    "8.8.8.8",      # Google DNS
+    "1.1.1.1",      # Cloudflare DNS
+    "208.67.222.222" # OpenDNS
+]
+
+# Number of consecutive failures before marking interface down
+failures_before_down = 3
+
+# Number of consecutive successes before marking interface up
+successes_before_up = 2
+
+
+# =============================================================================
+# DNS CONFIGURATION
+# =============================================================================
+# Dynamic DNS management following default route
+
+[dns]
+enabled = true
+
+# Fallback DNS servers (used when no interface-specific DNS available)
+fallback_servers = [
+    "8.8.8.8",
+    "1.1.1.1"
+]
+
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+[logging]
+# Log file path
+path = "/var/log/network-policy.log"
+
+# Log level: "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"
+level = "INFO"
+
+
+# =============================================================================
+# STATIC ROUTES
+# =============================================================================
+# Force specific destinations through specific interfaces
+# Useful for routing specific networks through LTE or VPN
+
+[[routes]]
+interface = "wwan0"
+destinations = [
+    "203.0.113.0/24",
+    "198.51.100.0/24"
+]
+
+[[routes]]
+interface = "wg0"
+destinations = [
+    "10.20.0.0/16"
+]
+
+
+# =============================================================================
+# NOTES
+# =============================================================================
+# 
+# Interface Priority:
+# - Lower priority number = higher precedence
+# - Suggested ranges: 10-19 (primary), 20-29 (secondary), 30+ (backup)
+# - Health monitoring can automatically adjust routing based on failures
+#
+# Firewall Rules:
+# - Rules are evaluated top to bottom
+# - First matching rule wins
+# - Always end with a default drop/reject rule
+# - Use address groups for maintainability
+#
+# Password Generation:
+# - Use: mkpasswd -m sha-512
+# - Or: python3 -c 'import crypt; print(crypt.crypt("password", crypt.mksalt(crypt.METHOD_SHA512)))'
+#
+# WireGuard Key Generation:
+# - Private: wg genkey
+# - Public: wg pubkey < privatekey
+# - PSK: wg genpsk
+#
+# Validation:
+# - Test config: network-policy-validate /path/to/config.toml
+# - View status: network-policy-ctl status
+# - Reload: network-policy-ctl reload
+#

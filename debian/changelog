@@ -1,0 +1,15 @@
+network-policy (1.0.0) stable; urgency=medium
+
+  * Initial release
+  * Complete network policy management system
+  * Support for Ethernet, WiFi, LTE, and WireGuard interfaces
+  * Integrated nftables firewall with address groups and services
+  * Health monitoring daemon with automatic failover
+  * Policy-based routing with per-interface tables
+  * DNS management following default route
+  * System settings and user management
+  * Comprehensive configuration validation
+  * Runtime configuration reloading
+  * Control tool for status and management
+
+ -- Network Policy Team <network-policy@example.com>  Fri, 10 Jan 2025 18:00:00 +0000

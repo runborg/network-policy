@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+network-policy-ctl - Control tool
+
+Command-line interface for:
+- Reloading configuration
+- Checking status
+- Viewing firewall rules
+"""
+
+import sys
+import json
+import socket
+import argparse
+
+# Add library to path
+sys.path.insert(0, '/usr/lib/network-policy')
+
+from logger import setup_logging, get_logger
+from config import load_config, ValidationError
+from firewall import show_firewall_rules, reload_firewall
+
+DEFAULT_CONFIG = "/data/network-policy.toml"
+SOCKET_PATH = "/run/network-policy.sock"
+
+
+def send_command(command: dict) -> dict:
+    """
+    Send command to health monitor daemon via control socket.
+    
+    Args:
+        command: Command dictionary
+        
+    Returns:
+        Response dictionary
+    """
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.connect(SOCKET_PATH)
+        
+        # Send command
+        sock.sendall(json.dumps(command).encode('utf-8'))
+        
+        # Receive response
+        response_data = sock.recv(65536).decode('utf-8')
+        response = json.loads(response_data)
+        
+        sock.close()
+        return response
+        
+    except FileNotFoundError:
+        return {"error": "Health monitor daemon not running (socket not found)"}
+    except ConnectionRefusedError:
+        return {"error": "Health monitor daemon not responding"}
+    except Exception as e:
+        return {"error": f"Communication error: {e}"}
+
+
+def cmd_reload(args):
+    """Reload configuration."""
+    logger = get_logger(__name__)
+    
+    print("Reloading network policy configuration...")
+    
+    try:
+        # Validate configuration first
+        print(f"Validating configuration: {args.config}")
+        config = load_config(args.config)
+        print("✓ Configuration valid")
+        
+        # Reload firewall
+        print("Reloading firewall...")
+        from firewall import reload_firewall
+        reload_firewall(config)
+        print("✓ Firewall reloaded")
+        
+        # Tell health monitor to reload
+        print("Reloading health monitor...")
+        response = send_command({
+            "action": "reload",
+            "config_path": args.config
+        })
+        
+        if "error" in response:
+            print(f"⚠ Health monitor: {response['error']}")
+        elif response.get("success"):
+            print("✓ Health monitor reloaded")
+        else:
+            print(f"⚠ Health monitor: {response}")
+        
+        print("\n✓ Configuration reloaded successfully")
+        return 0
+        
+    except ValidationError as e:
+        print(f"✗ Configuration validation error: {e}")
+        return 1
+    except Exception as e:
+        print(f"✗ Reload failed: {e}")
+        logger.error(f"Reload failed: {e}", exc_info=True)
+        return 1
+
+
+def cmd_status(args):
+    """Show system status."""
+    print("Network Policy Status")
+    print("=" * 60)
+    
+    # Get health monitor status
+    response = send_command({"action": "status"})
+    
+    if "error" in response:
+        print(f"\nHealth Monitor: {response['error']}")
+    else:
+        print("\nHealth Monitor: Running")
+        print(f"  Interval: {response['interval']}s")
+        print(f"  Timeout: {response['timeout']}s")
+        print(f"  Probe targets: {', '.join(response['probe_targets'])}")
+        print("\nInterface Status:")
+        
+        for iface_name, state in response['interfaces'].items():
+            status = "UP" if state['active'] else "DOWN"
+            print(f"  {iface_name}:")
+            print(f"    Status: {status}")
+            print(f"    Priority: {state['priority']}")
+            print(f"    Table: {state['table']}")
+            print(f"    IP: {state.get('ip', 'N/A')}")
+            print(f"    Gateway: {state.get('gateway', 'N/A')}")
+            print(f"    Failures: {state['failures']}")
+            print(f"    Successes: {state['successes']}")
+            if state.get('last_success'):
+                import datetime
+                last_success = datetime.datetime.fromtimestamp(state['last_success'])
+                print(f"    Last success: {last_success}")
+    
+    print("\n" + "=" * 60)
+    return 0
+
+
+def cmd_firewall(args):
+    """Show firewall rules."""
+    print("Network Policy Firewall Rules")
+    print("=" * 60)
+    print()
+    
+    rules = show_firewall_rules()
+    print(rules)
+    
+    return 0
+
+
+def main():
+    """Main control function."""
+    parser = argparse.ArgumentParser(
+        description="Network Policy Control Tool",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Reload command
+    reload_parser = subparsers.add_parser('reload', help='Reload configuration')
+    reload_parser.add_argument(
+        "-c", "--config",
+        default=DEFAULT_CONFIG,
+        help=f"Configuration file path (default: {DEFAULT_CONFIG})"
+    )
+    reload_parser.set_defaults(func=cmd_reload)
+    
+    # Status command
+    status_parser = subparsers.add_parser('status', help='Show system status')
+    status_parser.set_defaults(func=cmd_status)
+    
+    # Firewall command
+    firewall_parser = subparsers.add_parser('firewall', help='Show firewall rules')
+    firewall_parser.set_defaults(func=cmd_firewall)
+    
+    args = parser.parse_args()
+    
+    if not args.command:
+        parser.print_help()
+        return 1
+    
+    # Setup minimal logging
+    setup_logging(log_path=None, log_level="ERROR", console=False)
+    
+    # Execute command
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
